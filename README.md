@@ -4,7 +4,7 @@ Integrative project for Big Data, group 11. Cloud Provider Analytics: ingest and
 
 This repo is still at the design stage. Implementation comes later.
 
-Design notes so far: [docs/design.md](docs/design.md) (problem, users, goals, and the 5Vs).
+Design notes so far: [docs/design.md](docs/design.md) (problem, users, goals, the 5Vs, and a first profile of the landing files).
 
 ## Layout
 
