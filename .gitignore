@@ -190,3 +190,5 @@ checkpoints/
 # Landing raw files stay local; keep the folder via .gitkeep
 data/landing/*
 !data/landing/.gitkeep
+
+/.idea/
