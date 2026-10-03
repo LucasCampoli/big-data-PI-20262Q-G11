@@ -1,0 +1,9 @@
+source,format,files,rows,columns,grain_key,duplicate_keys,cols_with_nulls,date_column,date_range
+customers_orgs.csv,CSV,1,80,11,org_id,0,1,signup_date,2025-05-04 to 2025-07-02
+users.csv,CSV,1,800,7,user_id,0,1,created_at,2025-05-04 to 2025-08-11
+resources.csv,CSV,1,400,7,resource_id,0,1,created_at,2025-05-04 to 2025-08-21
+support_tickets.csv,CSV,1,1000,8,ticket_id,0,2,created_at,2025-05-09 to 2025-08-31
+marketing_touches.csv,CSV,1,1500,7,touch_id,0,0,timestamp,2025-05-04 to 2025-08-31
+nps_surveys.csv,CSV,1,92,4,org_id + survey_date,0,2,survey_date,2025-05-24 to 2025-08-31
+billing_monthly.csv,CSV,1,240,8,invoice_id,0,1,month,2025-06-01 to 2025-08-01
+usage_events_stream/*.jsonl,JSONL,120,43200,13,event_id,0,4,timestamp,2025-07-03 to 2025-08-31

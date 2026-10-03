@@ -56,6 +56,9 @@ Files are in `data/landing/`. We did not change them. Masters are small CSVs. Us
 
 `org_id` is on every file, so that is the join key. Traceability for now is the file name. We should keep that name when we load Bronze, and not edit Landing.
 
+Row counts, null shares and duplicate-key checks for every source are measured in
+`notebooks/01_landing_exploration.ipynb` and recorded in `evidence/landing_profile.md`.
+
 ### Main risks
 
 - **Schema change.** Events mix v1 and v2. v2 adds `carbon_kg` and, for genai, `genai_tokens`. A strict per-version schema would fail or drop the older rows. Mitigated by the superset schema below.
