@@ -180,9 +180,14 @@ In Landing, 10,800 v1 events carry 11 fields, 29,268 v2 events carry 12 and 3,13
 
 ### 4.1 Decision: Lambda-style hybrid
 
-Streaming ingests, batch aggregates. Structured Streaming reads the JSONL directory and appends
-events to Bronze and Silver with no stateful aggregation. Every daily mart in Gold is recomputed in
-batch from Silver. Masters and billing are batch only.
+Two layers over the same events. The speed layer is Structured Streaming: it appends to Bronze and
+maintains a provisional intraday view of cost and requests, which is what answers the
+near-real-time requirement of §2.1. The batch layer recomputes every Gold mart from Silver and
+replaces the provisional figures with final ones. Masters and billing are batch only.
+
+The split of responsibility is what makes this Lambda rather than batch with a streaming loader:
+the speed layer serves a number within the minute and admits it is incomplete, and the batch layer
+serves the number of record.
 
 The deciding evidence is the late-data measurement. Each of the 120 part files spans 59 of the 60
 days in the dataset, so the files are not time-ordered slices. Replayed in filename order as
@@ -206,18 +211,42 @@ lands in the partition for the day it belongs to and the next run corrects the t
 | Pure Kappa | One streaming job is the only path and every mart is a stateful streaming aggregation. | Half the sources do not belong in a stream: masters are periodic snapshots and billing is monthly, with no latency need. And computing daily Gold in streaming leaves only bad options, since a 1-day watermark discards 97.5% of events while the watermark that would not is about 60 days, holding window state for the whole period. |
 | Lambda-style hybrid (chosen) | Streaming for append-only ingestion, batch for all aggregation and all masters. | Meets both speed requirements and keeps the streaming job stateless. |
 
-The usual objection to Lambda is maintaining the same logic twice. It does not apply here: the
-streaming path only parses, flags and appends, and all aggregation lives in the batch path, so there
-is one implementation of every metric.
+The usual objection to Lambda is maintaining the same logic twice, and here it applies to exactly two
+measures. Cost and requests are summed in the speed layer and again in the batch layer, so the two
+can disagree. Three things keep that contained: only those two measures are duplicated, never the
+marts that depend on joins or anomaly scores; the provisional value is labelled provisional
+wherever it is served, so a disagreement is expected rather than a bug; and the batch value always
+wins at D+1. The definitions still have to be kept in step by hand, which is the price of the speed
+layer and the reason §4.1 limits it to two measures.
 
 ### 4.3 What runs where
 
 | Path | Sources | Trigger | Writes | Stateful |
 | :--- | :--- | :--- | :--- | :--- |
-| Streaming | `usage_events_stream/*.jsonl` | micro-batch, 1 min | Bronze events, append | No, only `dropDuplicates` on `event_id` for in-flight re-delivery |
+| Streaming, speed layer | `usage_events_stream/*.jsonl` | micro-batch, 1 min | Bronze events (append), provisional intraday view | No windows. Only the dedupe key set, bounded by a watermark on `ingest_ts` (§6.3) |
 | Batch daily | Silver events and dimensions | daily, after 00:00 UTC | Gold daily marts: Q1, Q2, Q3, Q5, anomalies | n/a |
 | Batch snapshot | 7 CSV masters | daily | Bronze and Silver dimensions | n/a |
 | Batch monthly | `billing_monthly.csv` | monthly | Gold `revenue_by_org_month`, Q4 | n/a |
+
+### 4.4 The provisional intraday view
+
+Design only. Delivery 2 requires the daily mart, not this, so it sits in the backlog as
+post-delivery-2 work (§9).
+
+| Aspect | Choice |
+| :--- | :--- |
+| What it holds | Provisional `cost_usd` and `requests` per `org_id`, `service` and `event_date`, for the current day and the previous one |
+| Who writes it | The streaming job, in `foreachBatch`, aggregating only the rows in that micro-batch |
+| How it stays idempotent | The Cassandra key includes the Spark `batchId`, so replaying a batch overwrites its own row instead of adding a second contribution. No counters, no read-modify-write |
+| How it is read | The serving query sums the per-batch rows for the requested `event_date`, and reports the figure as provisional |
+| How it ends | The daily batch run writes the final row into `org_daily_usage_by_service` and deletes that date's provisional rows. A TTL slightly longer than the batch SLA is the backstop if a run is missed |
+| Why late data does not break it | The view never claims to be complete. A late event raises the provisional figure when it arrives, and the batch recomputation settles the number regardless of arrival order |
+
+The cost of keying on `batchId` is row count: a one-minute trigger produces up to 1,440 batches a
+day, so a busy org-service-day can accumulate that many rows before it is finalised. That is
+acceptable for a view that is read interactively and deleted daily, and it is the price of
+idempotency without counters. If it ever stops being acceptable, the alternative is a single row per
+key plus a separate applied-batch log, which is more moving parts for the same guarantee.
 
 ## 5. Data Lake design
 
@@ -419,79 +448,65 @@ from Landing. Decisions behind these zones are in [`../DECISIONS.md`](../DECISIO
 ---
 title: "Cloud Provider Analytics, architecture v1, 2026-10-03"
 ---
-flowchart LR
+flowchart TB
   classDef zone fill:#eef4fb,stroke:#4a6fa5,color:#17293f
   classDef band fill:#f6f6f2,stroke:#9a9a8c,color:#2e2e26
 
-  subgraph SRC["Sources"]
-    direction TB
-    CSV["7 CSV masters<br/>orgs, users, resources, tickets,<br/>touches, NPS, billing"]
-    EVT["usage_events_stream<br/>120 JSONL parts"]
-  end
+  SRC["Sources · 7 CSV masters · usage_events_stream, 120 JSONL parts"]
+  LND["Landing · immutable, as delivered"]
+  BRZ["Bronze · ingest_date"]
+  SLV["Silver · event_date"]
+  GLD["Gold marts · usage_date, month"]
+  QTN["Quarantine · quarantine_date"]
 
-  subgraph ING["Ingestion"]
-    direction TB
-    BAT["Batch loader<br/>PySpark, daily"]
-    STR["Structured Streaming<br/>1 min micro-batch"]
-  end
-
-  subgraph LAKE["Data Lake, Parquet and Snappy"]
-    direction TB
-    LND["Landing<br/>immutable, as delivered"]
-    BRZ["Bronze<br/>ingest_date"]
-    SLV["Silver<br/>event_date"]
-    GLD["Gold marts<br/>usage_date, month"]
-    QTN["Quarantine<br/>quarantine_date"]
-  end
-
-  subgraph PROC["Batch processing"]
-    direction TB
-    CNF["Conform and repair<br/>quality rules"]
-    AGG["Aggregate<br/>daily and monthly"]
-  end
-
-  CAS["Serving<br/>Cassandra / AstraDB<br/>query-first tables"]
-
-  subgraph CONS["Consumption"]
-    direction TB
-    FIN["FinOps<br/>Q1 Q2 Q4 Q6"]
-    SUP["Support<br/>Q3"]
-    PRD["Product<br/>Q5"]
-  end
-
-  CSV --> LND
-  EVT --> LND
-  LND -->|masters, billing| BAT --> BRZ
-  LND -->|events| STR --> BRZ
-  BRZ --> CNF --> SLV --> AGG --> GLD --> CAS
-  CAS --> FIN
-  CAS --> SUP
-  CAS --> PRD
-
-  BAT -.->|parse failures| QTN
-  STR -.->|parse failures| QTN
-  CNF -.->|rejecting rules| QTN
-  QTN -.->|fix, then replay| LND
-
-  subgraph XC["Cross-cutting capabilities"]
+  subgraph SERV["Serving · Cassandra / AstraDB"]
     direction LR
-    GOV["Governance<br/>zone ownership,<br/>promotion rules"]
-    DQ["Quality<br/>rules and<br/>measured baselines"]
-    MD["Metadata<br/>explicit schemas,<br/>data dictionary"]
-    LIN["Lineage<br/>ingest_ts, source_file,<br/>run_id, repair flags"]
-    SEC["Security<br/>secrets outside git,<br/>least privilege"]
-    OBS["Observability<br/>freshness, volumes,<br/>quarantine size"]
+    CAS["Final marts · query-first"]
+    PRV["Provisional intraday · cost, requests"]
   end
 
-  XC -.->|applies to every zone and path| LAKE
+  CONS["Consumption · FinOps Q1 Q2 Q4 Q6 · Support Q3 · Product Q5"]
+  XC["Cross-cutting · governance and zone ownership · quality rules and baselines · metadata and explicit schemas · lineage · security · observability"]
+
+  SRC --> LND
+  LND -->|"batch loader, daily"| BRZ
+  LND -->|"streaming, 1 min, append"| BRZ
+  LND -->|"streaming foreachBatch"| PRV
+  BRZ -->|"conform and repair, batch"| SLV
+  SLV -->|"aggregate daily and monthly"| GLD
+  GLD -->|"upsert on mart key"| CAS
+  GLD -.->|"finalize at D+1"| PRV
+  SERV --> CONS
+
+  LND -.->|parse failures| QTN
+  BRZ -.->|rejecting rules| QTN
+  QTN -.->|"fix, then replay"| LND
 
   class LND,BRZ,SLV,GLD,QTN zone
-  class GOV,DQ,MD,LIN,SEC,OBS band
+  class XC band
 ```
 
-Solid arrows carry data that passed its gate. Dotted arrows are the quality path: rejects into
-Quarantine, and the one way back, a fix plus a replay from Landing. The streaming path stops at
-Bronze on purpose (§5.6). Nothing reads Quarantine except an engineer.
+Rendered for print as [`architecture_v1.svg`](architecture_v1.svg), generated from the block above.
+
+Ingestion appears as labelled edges rather than as its own boxes, and the tool at each step lives in
+the flow tables below, which is what keeps the figure to one readable page. Solid arrows carry data
+that passed its gate. Dotted arrows are the quality path: rejects into Quarantine, and the one way
+back, a fix plus a replay from Landing. Nothing reads Quarantine except an engineer.
+
+The streaming path writes twice. It appends to Bronze partitioned by `ingest_date` (§5.6), and it
+updates the provisional intraday view, which is the speed layer output (§4.4). Silver and Gold are
+batch only, and the daily run replaces the provisional figures with final ones.
+
+The cross-cutting band is one box in the figure. What it means per capability:
+
+| Capability | How it is realised |
+| :--- | :--- |
+| Governance | One writer per zone, a stated promotion rule per zone (§5.1 to §5.5), decisions recorded in `DECISIONS.md` |
+| Quality | Rejecting and repairing rules per source with measured baselines (§5.7), Quarantine as the control output |
+| Metadata | Explicit schemas rather than inference (§3.2), a data dictionary per zone, partition and naming conventions |
+| Lineage | `ingest_ts`, `ingest_date`, `source_file`, `run_id`, and the repair flags `unit_imputed` and `fx_overridden` |
+| Security | Credentials outside git via `config/paths.env.example`, least privilege per zone, no secrets in notebooks |
+| Observability | Freshness against O1 to O3, row volumes per partition, quarantine size against O5, run logs in `evidence/` |
 
 ### 6.2 Batch flow
 
@@ -510,22 +525,46 @@ Bronze on purpose (§5.6). Nothing reads Quarantine except an engineer.
 | :-- | :--- | :--- | :--- | :--- | :--- |
 | 1 | Watch the directory | `readStream.json` | `usage_events_stream/` | micro-batch frame | explicit superset schema, `maxFilesPerTrigger` to bound a batch |
 | 2 | Stamp lineage | PySpark | micro-batch frame | adds `ingest_ts`, `ingest_date`, `source_file` | `input_file_name()` |
-| 3 | Drop in-flight repeats | `dropDuplicatesWithinWatermark` | micro-batch frame | deduped frame | key `event_id`, short watermark, only for re-delivery |
+| 3 | Drop in-flight repeats | `withWatermark("ingest_ts", ...)`, then `dropDuplicatesWithinWatermark(["event_id"])` | micro-batch frame | deduped frame | watermark on `ingest_ts`, never on `timestamp`, for the reason below |
 | 4 | Split parse failures | PySpark | micro-batch frame | clean rows, corrupt rows | `columnNameOfCorruptRecord` |
 | 5 | Append to Bronze | `writeStream`, Parquet | clean rows | Bronze by `ingest_date` | one file per micro-batch, `checkpointLocation` |
 | 6 | Append rejects | `writeStream`, Parquet | corrupt rows | Quarantine | its own checkpoint, so one path cannot block the other |
+| 7 | Update the intraday view | `foreachBatch`, Cassandra writer | clean rows | provisional cost and requests by org, service, `event_date` | one row per batch id, so re-applying a batch overwrites instead of double counting |
 
-Trigger is `processingTime="1 minute"`. There is no windowed aggregation anywhere in this flow, which
-is the whole of D3 and D4: the watermark exists only to bound the dedupe state, not to close a
-window.
+Trigger is `processingTime="1 minute"`. No step holds a window. The only state is the dedupe
+key set, and step 7 aggregates within one micro-batch and nothing more.
+
+#### Why the dedupe watermark is on `ingest_ts`
+
+Both streaming dedupe APIs discard data beyond the watermark. PySpark 4.2 says so directly:
+`dropDuplicates` notes that "data older than watermark will be dropped to avoid any possibility of
+duplicates", and `dropDuplicatesWithinWatermark`, added in Spark 3.5, that "too late data older than
+watermark will be dropped".
+
+So a watermark on `timestamp`, the event time, would delete late events from Bronze, the zone whose
+whole job is to be a faithful copy. The measured loss would be 97.5% of events at a one-day
+threshold and 87.6% at seven days (§4.1).
+
+| Watermark column | Keeps all events? | Dedupe state | Verdict |
+| :--- | :--- | :--- | :--- |
+| `ingest_ts`, 1 hour | Yes. `ingest_ts` is stamped at read time, so it never lags behind arrival and no arriving row is late against it. | One hour of `event_id`s | Chosen |
+| `timestamp`, 60 days | Yes, the threshold exceeds the 59-day span | 60 days of `event_id`s. Trivial today at 43,200 keys, but 2.6 trillion at the §2.1 projection | Rejected on state cost |
+| `timestamp`, 1 to 7 days | No, loses 87.6% to 97.5% of events | Small | Rejected, breaks Bronze |
+
+The watermark therefore bounds how long a duplicate is remembered in arrival time, which is exactly
+the horizon a retry lives on. Exact deduplication is not this job's responsibility: the batch rebuild
+dedupes a whole `event_date` partition out of Bronze with no watermark at all, so a duplicate that
+slipped past the one-hour window is still removed before Silver.
 
 ### 6.4 Requirement to component matrix
 
-Requirements are the mandatory capabilities of §4.4 of the brief. The V column names the one that
-drives the requirement, and the decision column points at the record that settles it.
+Requirements are the two capabilities of §2.1 of the brief and the mandatory capabilities of §4.4.
+The V column names the one that drives the requirement, and the decision column points at the record
+that settles it.
 
-| Requirement (§4.4) | V | Component | Decision |
+| Requirement | V | Component | Decision |
 | :--- | :--- | :--- | :--- |
+| Near-real-time usage, consumption and incremental cost metrics (§2.1) | Velocity | Streaming `foreachBatch`, provisional intraday view in Cassandra | D3 |
 | Batch ingestion: read CSV and JSON from Landing, write partitioned Bronze Parquet with explicit schemas and technical columns | Variety | Batch loader, Bronze | D1, D4, D5 |
 | Streaming ingestion: explicit schema, watermark, dedupe by `event_id`, late data, checkpointing | Velocity | Structured Streaming, Bronze | D1, D3, D5 |
 | Quality: verifiable rules, invalid rows separated, quarantine in Parquet | Veracity | Conform and repair, Quarantine | D6, D7, D10 |

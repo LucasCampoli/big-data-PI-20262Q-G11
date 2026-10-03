@@ -10,7 +10,7 @@ Measurements come from [`evidence/landing_profile.md`](evidence/landing_profile.
 | :-- | :--- | :--- |
 | D1 | One explicit superset schema for usage events | Accepted |
 | D2 | Read `value` as string in Bronze, cast in Silver with `try_cast` | Accepted |
-| D3 | Lambda-style hybrid, with a stateless streaming path | Accepted |
+| D3 | Lambda-style hybrid, with a windowless speed layer | Accepted |
 | D4 | Five zones, Parquet with Snappy | Accepted |
 | D5 | One date column, `ingest_date` in Bronze and `event_date` in Silver | Accepted |
 | D6 | Impute-first quality policy | Accepted |
@@ -51,23 +51,35 @@ Consequences. Bronze is not directly summable on `value`, which is fine because 
 query layer. `try_cast` rather than `cast` is required: Spark 4 enables ANSI SQL mode by default, so
 a plain cast raises and would abort the job instead of quarantining the row.
 
-## D3. Lambda-style hybrid, with a stateless streaming path
+## D3. Lambda-style hybrid, with a windowless speed layer
 
-Context. §2.1 of the brief requires near-real-time usage metrics and batch masters. Each of the 120
-part files spans 59 of the 60 days in the dataset, so arrival order barely relates to event time.
+Context. §2.1 of the brief requires near-real-time usage, consumption and incremental cost metrics as
+well as batch masters. Each of the 120 part files spans 59 of the 60 days in the dataset, so arrival
+order barely relates to event time.
 
-Decision. Streaming for event ingestion, batch for all aggregation and all masters. The streaming job
-parses, flags and appends only. Its state is a checkpoint and a short-horizon `dropDuplicates` on
-`event_id` for in-flight re-delivery.
+Decision. A speed layer and a batch layer over the same events. The streaming job appends to Bronze
+and, in `foreachBatch`, maintains a provisional intraday view of cost and requests by org, service
+and event date. It holds no windows: it aggregates within one micro-batch, and idempotency comes from
+including the Spark `batchId` in the Cassandra key, so replaying a batch overwrites its own row. The
+batch layer recomputes every Gold mart from Silver and replaces the provisional figures with final
+ones at D+1. Masters and billing are batch only.
 
 Alternatives. Pure batch fails the near-real-time requirement and the mandatory Structured Streaming
 capability of §4.4. Pure Kappa fails twice over: masters are periodic snapshots and billing is
 monthly, with no latency need, and computing daily Gold in streaming either discards 97.5% of events
-at a 1-day watermark or needs a 60-day watermark holding state for the whole period.
+at a 1-day watermark or needs a 60-day watermark holding state for the whole period. Streaming that
+stops at Bronze with no serving output was the earlier draft of this decision, and it was wrong: with
+no speed-layer output nothing answers §2.1, and the design is batch with a streaming loader rather
+than Lambda. A stateful streaming aggregation instead of `foreachBatch` would hold 60 days of windows
+to avoid dropping late events, which is the batch job at a higher price.
 
-Consequences. Two execution paths to operate. The usual Lambda complaint about duplicated logic does
-not apply, because the paths do different jobs and there is one implementation of every metric. Marts
-are as fresh as the batch schedule, O2, not as fresh as the stream.
+Consequences. Two execution paths to operate, and cost and requests are now computed in both, so the
+two can disagree between the last micro-batch and the next batch run. The containment is that only
+those two measures are duplicated, the provisional figure is labelled provisional wherever it is
+served, and the batch value wins at D+1. Keeping the two definitions in step is manual work, which is
+why the speed layer is limited to two measures. Final marts are as fresh as the batch schedule, O2.
+The provisional view is design only for delivery 1 and sits in the backlog as post-delivery-2 work,
+since delivery 2 requires the daily mart.
 
 ## D4. Five zones, Parquet with Snappy
 
@@ -166,12 +178,25 @@ a re-run re-reads the same part files, so duplicates are a property of execution
 source.
 
 Decision. Nothing writes to Landing, and reprocessing re-reads the original files. Silver and Gold
-overwrite the affected partition rather than appending. The Cassandra load upserts on each mart key.
-An ingested-files log gates Landing to Bronze.
+overwrite the affected partition rather than appending. The Cassandra load upserts on each mart key,
+and the provisional intraday view keys on `batchId` (D3). An ingested-files log gates Landing to
+Bronze.
+
+Streaming dedupe uses a watermark on `ingest_ts`, never on `timestamp`. Both dedupe APIs discard
+data beyond the watermark: PySpark 4.2 documents that `dropDuplicates` drops "data older than
+watermark to avoid any possibility of duplicates", and that `dropDuplicatesWithinWatermark`, added
+in Spark 3.5, drops "too late data older than watermark". Since `ingest_ts` is stamped at read time
+it never lags behind arrival, so nothing is late against it and Bronze keeps every event. The
+watermark then bounds only how long a duplicate `event_id` is remembered, in arrival time, which is
+the horizon a retry lives on. Exact deduplication is the batch rebuild's job, which dedupes a whole
+`event_date` partition out of Bronze with no watermark.
 
 Alternatives. Correcting rows in place in Landing destroys the only reproducible baseline. Appending
 plus a later dedupe pass makes correctness depend on a cleanup job having run, and the window between
-the two is visible to consumers.
+the two is visible to consumers. On the watermark column, an event-time watermark of 1 to 7 days
+would delete 87.6% to 97.5% of events from Bronze, the zone whose job is to be a faithful copy, and
+an event-time watermark of 60 days would keep them but hold 60 days of `event_id`s in state: trivial
+at today's 43,200 keys, and 2.6 trillion at the §2.1 projection.
 
 Consequences. Landing is never expired, which costs storage, and Bronze can then be kept for only 90
 days. Re-running any date is safe, O9. Partition overwrite is not atomic on plain object storage, so
