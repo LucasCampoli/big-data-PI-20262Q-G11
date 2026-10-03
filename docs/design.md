@@ -410,3 +410,213 @@ Landing ──parse under explicit schema──▶ Bronze ──pass rejecting r
 
 Each arrow is a gate with a stated condition. The only way out of Quarantine is a fix plus a replay
 from Landing. Decisions behind these zones are in [`../DECISIONS.md`](../DECISIONS.md).
+
+## 6. Reference batch flow in MapReduce
+
+The brief asks for the batch processing expressed as MapReduce. We do not implement it in Hadoop.
+The point is to reason about where the data moves and what has to be true at each step, and then to
+compare that with how Spark will actually run it.
+
+The flow computes `org_daily_usage_by_service`, which answers Q1 and Q2 and is the mandatory mart
+for delivery 2. Grain is one row per org, day and service.
+
+### 6.1 The job in one picture
+
+```text
+Silver usage_events, Parquet by event_date
+  event_date=2025-08-01/  event_date=2025-08-02/  ...        only the requested dates are read
+          |                       |
+     +----+----+             +----+----+
+     | split 1 |             | split 2 |   ...                one split per block, one map task each
+     +----+----+             +----+----+
+          |                       |
+        MAP: emit (org_id, usage_date, service) -> measures
+          |                       |
+      COMBINE: sum locally, per map task
+          |                       |
+     PARTITION: hash(org_id, usage_date, service) % R
+          |                       |
+          +------- SHUFFLE and SORT by key -------+
+                          |
+             +------------+------------+
+             |                         |
+         REDUCE 1                  REDUCE R           keys arrive sorted, one key seen once
+             |                         |
+     Gold org_daily_usage_by_service, partitioned by usage_date
+```
+
+### 6.2 Input and splits
+
+Input is Silver, not Bronze. Conformance, the `unit` imputation, the `value` cast, the dedupe on
+`event_id` and the quarantine split all happened upstream (§5.3), so the mapper can assume one clean
+record per event. Running the same flow straight off Bronze would mean doing all of that inside the
+mapper, with no way to write rejected rows anywhere except a side output.
+
+Silver is Parquet partitioned by `event_date`, so a run for a date range reads only those
+directories. Each split is one block of one file, and each split becomes one map task.
+
+| | Today | Projected (§2.1) |
+| :--- | ---: | ---: |
+| Data per day | ~30 KB | ~1.6 TB |
+| Splits per day at 128 MB | 1 | ~12,500 |
+| Reduce keys per day, orgs x services | 480 | 300,000 |
+
+### 6.3 Map
+
+The mapper projects one event into the mart grain. Each measure travels as a pair, a sum and a count
+of present values, because a null measurement must not become a zero downstream (§5.7).
+
+```text
+map(record):
+    key = (record.org_id, date(record.timestamp), record.service)
+
+    # metric names the slot this event's value belongs to
+    requests = cpu = storage = 0.0
+    requests_n = cpu_n = storage_n = 0
+
+    if record.value is not null:
+        if   record.metric == "requests":         requests, requests_n = record.value, 1
+        elif record.metric == "cpu_hours":        cpu,      cpu_n      = record.value, 1
+        elif record.metric == "storage_gb_hours": storage,  storage_n  = record.value, 1
+
+    cost = record.cost_usd_increment
+
+    emit(key, {
+        cost:      cost or 0.0,               cost_n:     1 if cost is not null else 0,
+        requests:  requests,                  requests_n: requests_n,
+        cpu:       cpu,                       cpu_n:      cpu_n,
+        storage:   storage,                   storage_n:  storage_n,
+        genai:     record.genai_tokens or 0,  genai_n:    1 if record.genai_tokens is not null else 0,
+        carbon:    record.carbon_kg or 0,     carbon_n:   1 if record.carbon_kg is not null else 0,
+        events:         1,
+        negative_cost:  1 if cost is not null and cost < -0.01 else 0,
+        unit_imputed:   1 if record.unit_imputed else 0,
+    })
+```
+
+One event produces exactly one key-value pair. The mapper does no filtering, so the reduce side can
+report how many events a figure rests on.
+
+### 6.4 Combiner
+
+Every field in the value is a sum or a count, so the combiner is the same function as the reducer:
+
+```text
+combine(key, values):  emit(key, elementwise_sum(values))
+```
+
+This is valid only because sum and count are associative and commutative. It is worth being explicit
+about what that excludes. An average cannot be combined directly, which is why the reducer derives
+it from a sum and a count. A distinct count, for example distinct active resources per org-day,
+cannot be combined at all and would need either a second job or an approximate sketch.
+
+The combiner is where the volume is won. At projected scale a day has 12,500 map tasks and 300,000
+distinct keys, so without it the shuffle carries 43.2 billion records. With it each map task emits at
+most the number of distinct keys it saw.
+
+### 6.5 Partitioner
+
+```text
+partition(key, R) = hash(org_id, usage_date, service) % R
+```
+
+The hash covers the whole composite key. Hashing on `org_id` alone would send every day and service
+of one org to a single reducer, and org sizes are uneven, so a few large tenants would decide the
+runtime of the job. The composite key spreads the work.
+
+The cost of that choice is that one org's rows end up spread across reducers, so a per-org top-N
+cannot be computed in the same pass. Q2 does not need it: it is a 14-day range scan inside one
+Cassandra partition, ranked at read time over at most 84 rows (§1.2).
+
+### 6.6 Shuffle, sort and reduce
+
+The framework groups by key and delivers each reducer its keys in sorted order. Sorting by
+`(org_id, usage_date, service)` means a reducer walks one org's days contiguously, which suits the
+Cassandra write, since the serving table is also keyed by org and clustered by date.
+
+```text
+reduce(key, values):
+    a = elementwise_sum(values)
+
+    emit(key, {
+        daily_cost_usd:    a.cost if a.cost_n > 0 else null,
+        requests:          a.requests if a.requests_n > 0 else null,
+        cpu_hours:         a.cpu      if a.cpu_n      > 0 else null,
+        storage_gb_hours:  a.storage  if a.storage_n  > 0 else null,
+        genai_tokens:      a.genai    if a.genai_n    > 0 else null,
+        carbon_kg:         a.carbon   if a.carbon_n   > 0 else null,
+
+        events:                a.events,
+        negative_cost_events:  a.negative_cost,
+        unit_imputed_events:   a.unit_imputed,
+        carbon_coverage:       a.carbon_n / a.events,
+    })
+```
+
+The `if count > 0 else null` is where O7 is enforced. A day with no usable `requests` reports null
+rather than 0, so an average over the mart is not dragged down by days that were never measured.
+
+### 6.7 Output
+
+One record per key, written to `datalake/gold/org_daily_usage_by_service/usage_date=.../`. The number
+of output files equals the number of reducers, so R is chosen for file size rather than for
+parallelism alone, which is the same concern as §5.6. The write overwrites the `usage_date`
+partitions it computed, so re-running a date range is idempotent (D8).
+
+### 6.8 Negative costs and the two schema versions
+
+These are the two places a naive implementation goes wrong.
+
+| Case | Naive handling | What this flow does |
+| :--- | :--- | :--- |
+| `cost_usd_increment` below -0.01, 211 events | Filter them out, or clamp to 0, to avoid a negative total | Keep them in the sum, because a negative increment is a real correction and dropping it overstates spend. Count them into `negative_cost_events` so the anomaly mart and a reviewer can see the day rests on corrections. |
+| v1 events, 10,800 rows with no `carbon_kg` or `genai_tokens` | Branch on `schema_version`, or skip v1, or coalesce the missing fields to 0 | Nothing. The superset schema (D1) gives every record all 13 fields, and the sum-with-count pair makes a null contribute nothing to either. A v1-only day emits null for both measures, and a mixed day emits the v2 subtotal plus `carbon_coverage` to say what share it covers. |
+
+No stage in this flow reads `schema_version` to decide anything. That is the payoff of deciding the
+schema once, and it is the property to preserve when a v3 arrives: add the field to the schema and
+to the value tuple, and no stage logic changes.
+
+### 6.9 How Spark runs the same thing
+
+| MapReduce stage | Spark equivalent |
+| :--- | :--- |
+| Input splits | Partitions of the Parquet scan, with the same partition pruning on `event_date` |
+| Map | A projection fused into the scan, not a separate stage |
+| Combiner | Map-side partial aggregation, chosen by Catalyst, usually a hash aggregate |
+| Partitioner | `HashPartitioner` on the grouping columns, applied at the shuffle write |
+| Shuffle and sort | An exchange. Spark hash-aggregates by default and only sorts when it has to spill |
+| Reduce | The final aggregate on the shuffle read side |
+| Output | `write.partitionBy("usage_date")` after a `coalesce` to size the files |
+
+In the DataFrame API the whole job is one expression:
+
+```python
+(silver_events
+ .groupBy("org_id", "usage_date", "service")
+ .agg(F.sum("cost_usd_increment").alias("daily_cost_usd"),
+      F.sum(F.when(F.col("metric") == "requests", F.col("value_double"))).alias("requests"),
+      F.sum(F.when(F.col("metric") == "cpu_hours", F.col("value_double"))).alias("cpu_hours"),
+      F.sum(F.when(F.col("metric") == "storage_gb_hours", F.col("value_double"))).alias("storage_gb_hours"),
+      F.sum("genai_tokens").alias("genai_tokens"),
+      F.sum("carbon_kg").alias("carbon_kg"),
+      F.count("*").alias("events"),
+      F.sum(F.col("cost_anomaly_flag").cast("int")).alias("negative_cost_events"),
+      F.sum(F.col("unit_imputed").cast("int")).alias("unit_imputed_events")))
+```
+
+Three differences worth noting.
+
+Spark's `sum` already does what the hand-built sum-and-count pair does: it skips nulls and returns
+null when every input is null. The MapReduce version has to carry the count explicitly to get the
+same answer, which is a good illustration of what the framework is doing for us.
+
+MapReduce writes to HDFS between every job, so a mart that needs a dimension join, then an
+aggregation, then an anomaly pass is three jobs and two round-trips to disk. Spark keeps the
+intermediate data in memory across stages in one job, and broadcasts the small dimensions instead of
+needing a distributed-cache map-side join.
+
+Catalyst decides the aggregation strategy, so there is no combiner to write and no partitioner to
+choose. That is convenient and it is also why the MapReduce version is worth writing down: it makes
+the shuffle, the key choice and the skew risk visible, and those are the things that still decide
+whether the Spark job performs.
+
