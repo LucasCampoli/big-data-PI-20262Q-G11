@@ -58,9 +58,58 @@ Files are in `data/landing/`. We did not change them. Masters are small CSVs. Us
 
 ### Main risks
 
-- **Schema change.** Events mix v1 and v2. v2 adds `carbon_kg` and, for genai, `genai_tokens`. A strict schema will fail or drop the older rows.
-- **Ambiguous types.** Some numeric fields arrive as text or null (`value`, and similar). A hard cast will break the load.
+- **Schema change.** Events mix v1 and v2. v2 adds `carbon_kg` and, for genai, `genai_tokens`. A strict per-version schema would fail or drop the older rows. Mitigated by the superset schema below.
+- **Ambiguous types.** `value` arrives as a number, as text, or as null. A hard cast at read time turns the bad rows into nulls without telling us. Mitigated by reading `value` as `string` in Bronze and casting in Silver, where a failed cast is quarantined instead of silently lost.
 - **Bad amounts.** Costs and invoice subtotals can be negative, and billing is not all USD. Summing them raw will distort FinOps numbers.
 - **Nulls on facts we need.** Open tickets have no resolution time, CSAT and NPS are often empty. Averages that ignore that will look better than they are.
+
+### Event superset schema
+
+Both versions are read with one explicit `StructType`, never with schema inference: inference samples the files it is given, so a micro-batch holding only v1 events would produce a narrower schema than a v2 one and the column set would drift between runs. Declaring the union of all fields once keeps every part file readable by the same reader.
+
+| Field | Bronze type | Nullable | Present in | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `event_id` | string | no | v1, v2 | Event key. Dedupe key for re-runs. |
+| `timestamp` | timestamp | no | v1, v2 | Uniform ISO-8601 UTC (`2025-08-17T01:55:00Z`) across all 43,200 events. Source of the `event_date` partition. |
+| `org_id` | string | no | v1, v2 | Join key to the masters. |
+| `resource_id` | string | no | v1, v2 | Join key to `resources.csv`. |
+| `service` | string | no | v1, v2 | 6 values, consistent with the masters. |
+| `region` | string | no | v1, v2 | 7 values, consistent with the masters. |
+| `metric` | string | no | v1, v2 | `requests`, `cpu_hours`, `storage_gb_hours`. |
+| `value` | string | yes | v1, v2 | Read as text on purpose: 41,014 arrive numeric, 1,309 as text, 877 null. Cast to double in Silver. |
+| `unit` | string | yes | v1, v2 | 2,075 null, and 2,038 of those have a `value` — a quality rule, not a schema problem. |
+| `cost_usd_increment` | double | yes | v1, v2 | Always numeric in this dump, but can be negative. |
+| `schema_version` | int | no | v1, v2 | `1` or `2`. Kept so a row can be traced back to its layout. |
+| `carbon_kg` | double | **yes** | v2 only | Null for every v1 row. Mixed int/float in the source, so double. |
+| `genai_tokens` | long | **yes** | v2, `service = genai` only | Null for v1 and for every non-GenAI v2 row. |
+
+```python
+from pyspark.sql.types import (
+    StructType, StructField, StringType, DoubleType,
+    IntegerType, LongType, TimestampType,
+)
+
+# One schema for v1 and v2. carbon_kg and genai_tokens are nullable,
+# so v1 rows load with those two columns as null instead of being rejected.
+USAGE_EVENT_SCHEMA = StructType([
+    StructField("event_id",           StringType(),    nullable=False),
+    StructField("timestamp",          TimestampType(), nullable=False),
+    StructField("org_id",             StringType(),    nullable=False),
+    StructField("resource_id",        StringType(),    nullable=False),
+    StructField("service",            StringType(),    nullable=False),
+    StructField("region",             StringType(),    nullable=False),
+    StructField("metric",             StringType(),    nullable=False),
+    StructField("value",              StringType(),    nullable=True),
+    StructField("unit",               StringType(),    nullable=True),
+    StructField("cost_usd_increment", DoubleType(),    nullable=True),
+    StructField("schema_version",     IntegerType(),   nullable=False),
+    StructField("carbon_kg",          DoubleType(),    nullable=True),
+    StructField("genai_tokens",       LongType(),      nullable=True),
+])
+```
+
+Field counts observed in Landing: 10,800 v1 events carry 11 fields, 29,268 v2 events carry 12, and 3,132 GenAI v2 events carry 13. All three shapes load through the schema above.
+
+On top of these 13 fields, Bronze adds `ingest_ts` and `source_file` so a row can always be traced back to the part file it came from.
 
 Architecture and the rest of the first-partial design are still to be written.
