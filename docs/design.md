@@ -789,3 +789,91 @@ choose. That is convenient and it is also why the MapReduce version is worth wri
 the shuffle, the key choice and the skew risk visible, and those are the things that still decide
 whether the Spark job performs.
 
+## 8. Plan
+
+### 8.1 Assumptions
+
+Data risks are in §3.1. These are the assumptions the design rests on, and what breaks if one is
+wrong.
+
+| Assumption | If it is wrong |
+| :--- | :--- |
+| `csat` is a 1 to 5 scale, and both NPS columns are the aggregate -100 to 100 scale | Two rules in §5.7 change their thresholds. Nothing else moves |
+| `metric` determines `unit` 1:1, as measured | The `unit` imputation stops being a derivation. The rule becomes a contradiction check and those 2,075 events go to Quarantine |
+| An invoice in USD should carry a rate of 1.0 | D9's override is wrong and per-org revenue shifts by up to 12% |
+| A null `credits` means no credit, not an unknown amount | Revenue is overstated for 137 invoices |
+| Landing files arrive complete, never half written | The ingested-files log can promote a truncated file. Needs a size or marker check before promotion |
+| One event carries one metric measurement | The map step in §7.3 needs more than one value slot per record |
+| The 60-day sample is representative of a larger system, per A1 to A5 | The projection in §2.1 is wrong, and the partitioning advice that depends on it changes |
+| The dataset does not change between deliveries | Every baseline in `evidence/` has to be regenerated and the thresholds in §1.3 rechecked |
+| Colab or an equivalent is enough to run delivery 2 at this volume | Needs a local Spark or a cluster, which changes nothing in the design |
+| A free AstraDB tier is enough for the serving tables | Falls back to a local Cassandra container, which changes nothing in the design |
+
+### 8.2 Project risks
+
+| Risk | Impact | Mitigation |
+| :--- | :--- | :--- |
+| Cassandra or AstraDB setup blocks serving late in delivery 2 | Two checklist items fail, keyspace and the CQL queries | Spike it in week 1 against an empty table, before any mart exists |
+| Streaming checkpoint state becomes unusable after a schema or code change | The streaming job will not restart and the demo stalls | Document a reset procedure, and keep Bronze rebuildable from Landing so a reset costs nothing |
+| Five people editing one design document | Merge conflicts and lost edits | One owner per section, short-lived branches, no direct edits to the same section in parallel |
+| Work starts on the speed layer before the mandatory mart is done | Delivery 2 misses `org_daily_usage_by_service` for an item it does not require | The backlog in §8.5 puts the provisional view after delivery 2 |
+| Uneven Spark experience across the team | Work concentrates on one or two people | Pair on the first job in each area, and keep the notebook as the shared reference |
+| Feedback from delivery 1 arrives late and is substantial | Rework competes with new implementation | Treat corrections as the first workstream in §8.4, not the last |
+
+### 8.3 Open decisions
+
+Both are recorded in `DECISIONS.md` with what is already settled and what is not.
+
+| Decision | What is open | Decide by |
+| :--- | :--- | :--- |
+| D11, Cassandra query-first layout | Whether `(org_id)` alone bounds partition growth or needs a month bucket, the clustering order for Q2, and whether the anomaly mart is its own table | Before the keyspace is written in delivery 2, which needs it |
+| D12, anomaly method and threshold | z-score, MAD or percentile, at which grain, over which window, at what cut-off | With `cost_anomaly_mart` in delivery 2. Needs the aggregated daily series, not raw increments |
+
+### 8.4 Roles and effort
+
+Five roles, one per person. Assignment is the team's to make. Each role owns its area's code,
+evidence and section of the document.
+
+| Role | Owns |
+| :--- | :--- |
+| Ingestion | Batch loaders, the streaming job, Bronze, checkpoints, the ingested-files log |
+| Quality and Silver | The rules of §5.7, Quarantine, conformance, the dimension joins |
+| Marts | Gold aggregations, the features, the anomaly component |
+| Serving | Keyspace, query-first tables, the Spark to Cassandra load, the CQL queries |
+| Docs and release | Design document, diagram, `DECISIONS.md`, `evidence/`, tags, the Quickstart |
+
+Estimate to the delivery 2 checklist (§9.2 of the brief), in person-hours.
+
+| # | Workstream | Role | Hours | Depends on |
+| :-- | :--- | :--- | ---: | :--- |
+| 1 | Corrections from delivery 1 feedback | all | 10 | feedback |
+| 2 | Batch to Bronze, three masters | Ingestion | 10 | |
+| 3 | Streaming to Bronze, with watermark, dedupe and checkpointing | Ingestion | 16 | 2 |
+| 4 | Quality rules, Quarantine and the fixture samples | Quality and Silver | 14 | 3 |
+| 5 | Silver for events and one master, joins, three features | Quality and Silver | 18 | 4 |
+| 6 | Gold `org_daily_usage_by_service` | Marts | 10 | 5 |
+| 7 | Serving: keyspace, table, loader, two CQL queries | Serving | 16 | 6, D11 |
+| 8 | Analytics or ML component | Marts | 12 | 5 |
+| 9 | Idempotency evidence, before and after counts | Ingestion | 6 | 3, 6 |
+| 10 | Preliminary governance: controls, metadata, lineage, access | Docs and release | 8 | |
+| 11 | Quickstart, logs, run evidence, updated diagram, final backlog | Docs and release | 14 | all |
+| | Total | | 134 | |
+
+134 hours over the six weeks to 2026-11-16, across five people, is about four and a half hours a
+week each. Workstream 7 is the one with an external dependency, which is why §8.2 puts the AstraDB
+spike in week 1.
+
+### 8.5 Backlog to delivery 2
+
+Categories are the ones the brief asks for.
+
+| Priority | Item | Note |
+| :--- | :--- | :--- |
+| Required | Workstreams 1 to 11 of §8.4 | The §9.2 checklist |
+| Required | Decide D11 and D12 | Both block items in that checklist |
+| Desirable | Provisional intraday view (§4.4) | After delivery 2. Delivery 2 requires the daily mart, not a speed layer, and building it early risks the mandatory item |
+| Desirable | Remaining Gold marts: `revenue_by_org_month`, `tickets_by_org_date`, `genai_tokens_by_org_date`, `cost_anomaly_mart` | Delivery 2 requires only the FinOps mart. The rest are for the final MVP |
+| Desirable | Automated checks for the quality rules in CI | Today the rules are design plus fixtures |
+| Out of scope | Delta or Iceberg for atomic partition overwrite | Noted in D4. Outside the required stack |
+| Out of scope | Real ingestion from a message broker | The brief provides a directory of files, and §5.6 depends on that |
+| Out of scope | Operating at the §2.1 projected scale | The projection justifies the design, it is not a deliverable |
