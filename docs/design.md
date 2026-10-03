@@ -2,42 +2,132 @@
 
 Group 11. First partial: problem framing, why this is a Big Data case, and a first look at the sources. Architecture comes later.
 
-## 1. Problem, users, questions, and goals
+## 1. Problem, users, questions and objectives
 
-We act as the data team of a cloud provider. Customer data arrives raw and messy: nulls, noisy values, numbers that sometimes come as text, occasional negative costs, and a schema change mid-history (`schema_version=2` adds `carbon_kg` and, for GenAI, `genai_tokens`). Usage events also show up as small JSONL fragments, not as one clean file.
+### 1.1 The problem
 
-The job is to take those sources and turn them into something FinOps, Support, and Product can actually query. Masters and billing can wait for a daily or monthly batch. Usage needs to be closer to real time.
+We are the data team of a cloud provider. Three domains — FinOps, Support and Product — need to
+answer questions about the same customers, from data that lands raw: nulls, numbers that arrive as
+text, negative costs, spikes two orders of magnitude above the median, and a schema change
+mid-history. Usage arrives as a stream of small JSONL fragments; masters and billing arrive as flat
+CSV snapshots.
 
-### Users
+The job is to turn that into a small set of query-ready tables, with the mess handled explicitly
+rather than averaged away. Two speeds are required: usage needs near-real-time ingestion, while
+masters and billing are fine on a daily or monthly batch.
 
-| Who | What they need |
-| :--- | :--- |
-| FinOps | Costs, consumption, revenue, credits, taxes, odd spikes, and efficiency by organization and service. |
-| Support | Ticket volume, severity, SLA compliance, and CSAT by organization and date. |
-| Product / Usage | Service usage, requests, operational metrics, and GenAI tokens / carbon when those fields exist. |
+### 1.2 Users and the decisions they make
 
-### Main questions
+| Domain | Decision they make | What they need from us |
+| :--- | :--- | :--- |
+| **FinOps** | Where spend is going, which charges to investigate, what to invoice. | Daily cost and consumption by org and service, anomaly flags, revenue in USD after credits and taxes. |
+| **Support** | Where to staff, which accounts are at risk. | Ticket volume by severity, SLA breach rate and CSAT by org and date. |
+| **Product / Usage** | Which services to invest in, how GenAI adoption is growing. | Requests and operational metrics by service, GenAI tokens and carbon where the fields exist. |
 
-- FinOps: what did each organization spend per service on a given day, and which days look abnormal?
-- FinOps: for a month, what is revenue in USD after credits and taxes?
-- Support: how many critical tickets opened, and what share missed the SLA?
-- Product: how many requests (and GenAI tokens, when present) did an organization generate?
+### 1.3 Business questions mapped to the serving queries
 
-### Measurable objectives
+Every question below has to be answerable from Cassandra, from a single partition read. The five
+queries are the ones the brief fixes in §7.4; the marts are the Gold tables that back them.
 
-1. Produce daily cost and request totals by organization and service.
-2. Produce ticket counts and an SLA-breach rate by organization, date, and severity.
-3. Keep the original Landing files unchanged, and still load records that have nulls or mixed types without dropping the whole file.
+| # | Business question | Domain | Serving query (§7.4) | Gold mart | Partition key → clustering |
+| :-- | :--- | :--- | :--- | :--- | :--- |
+| Q1 | What did each org spend, per service, day by day over a date range? | FinOps | Daily cost and requests by org and service | `org_daily_usage_by_service` | `(org_id)` → `usage_date, service` |
+| Q2 | Which services cost this org the most over the last 14 days? | FinOps | Top-N services by accumulated cost, 14 days | `org_daily_usage_by_service` | same table, range-scanned then ranked |
+| Q3 | How are critical tickets and SLA breaches trending over the last 30 days? | Support | Critical tickets and SLA breach rate per day | `tickets_by_org_date` | `(org_id)` → `ticket_date, severity` |
+| Q4 | What is this org's monthly revenue in USD after credits and taxes? | FinOps | Monthly revenue normalized to USD | `revenue_by_org_month` | `(org_id)` → `month` |
+| Q5 | How many GenAI tokens did this org consume per day, and at what cost? | Product | GenAI tokens and estimated cost per day | `genai_tokens_by_org_date` | `(org_id)` → `usage_date` |
+| Q1b | Which days look abnormal and should be investigated? | FinOps | — *additional FinOps question, outside the five §7.4 queries* | `cost_anomaly_mart` | `(org_id)` → `usage_date, service` |
 
-## 2. Why Big Data (5V)
+Q1 and Q2 share one mart on purpose: both are a date-range scan inside one org's partition, so a
+second table would duplicate the data for no gain. Q2 ranks the scan result, which is cheap at this
+grain (one org × 14 days × 6 services = 84 rows at most).
 
-| V | Why it shows up here |
-| :--- | :--- |
-| Volume | Usage is split across many JSONL files, not a single spreadsheet. Masters (orgs, users, resources, tickets, billing) add more tables that have to be joined later. |
-| Velocity | Usage arrives as micro-batches meant to be read as a stream. Billing and CRM can stay on a slower batch schedule. |
-| Variety | Mix of CSV masters and JSONL events. Event schema changes from v1 to v2 (`carbon_kg`, `genai_tokens`). Some numeric fields arrive as text. |
-| Veracity | Nulls, noisy org attributes, negative costs, and large cost spikes. We cannot treat every row as clean. |
-| Value | FinOps, Support, and Product need the same customer data for different questions (spend, SLA, usage). A shared pipeline is what makes those answers possible. |
+### 1.4 Measurable objectives
+
+These are the success criteria. Each threshold is either derived from the serving requirement or
+anchored to the baseline measured in `evidence/landing_profile.md`, so it can be checked rather
+than asserted.
+
+**Freshness and latency**
+
+| # | Objective | Threshold | Measured as |
+| :-- | :--- | :--- | :--- |
+| O1 | A usage event is queryable in Bronze shortly after its file lands | ≤ 5 min | `ingest_ts` − file arrival time, p95 |
+| O2 | Streaming micro-batches keep up with arrivals | p95 batch duration < 30 s, trigger 1 min | Spark `StreamingQueryProgress` |
+| O3 | Daily Gold marts for day D are published early on D+1 | by 06:00 UTC | mart write timestamp |
+| O4 | The five §7.4 queries answer fast enough for a dashboard | p95 < 1 s | single-partition read, timed from the client |
+
+**Quality** — the policy is **impute-first, quarantine-last**: a row is rejected only when the data
+contradicts itself or cannot be placed, never because it is merely incomplete. Baselines are
+today's Landing, so a regression is visible.
+
+| # | Objective | Threshold | Baseline today |
+| :-- | :--- | :--- | :--- |
+| O5 | `event_id` present and unique in Silver | 100% / 0 duplicates | 0 null, 0 duplicate |
+| O6 | Quarantine stays an exception, measured in cost as well as in rows | ≤ 1% of events **and** ≤ 1% of cost | **0% / 0%** — every rejecting rule returns zero on 43,200 events |
+| O7 | A repaired field is always flagged, never silently changed | 100% of imputed rows carry `unit_imputed` | 2,075 events (4.80% of events, 4.92% of cost) |
+| O8 | A missing `value` never becomes a zero | contributes `null` to usage sums; its cost is still counted | 877 events (2.03% of events, 2.01% of cost) |
+| O9 | Negative-cost events flagged, never dropped | 100% flagged | 211 events (0.49% of events, −0.62% of cost) |
+| O10 | Every Bronze row traceable to its source file | 100% carry `ingest_ts` + `source_file` | by construction |
+| O11 | Referential integrity to the masters | 100% | 80 of 80 orgs, 400 of 400 resources resolve |
+
+O6 is the objective that changed most once cost was measured alongside row counts. A
+quarantine-first reading of the `unit` rule would have rejected 4.80% of events carrying **4.92% of
+all cost**, understating every FinOps mart by about 5%. Because `metric` determines `unit` 1:1 in
+the data, those rows are repaired instead — which is what drops the real quarantine baseline to
+zero.
+
+**Correctness**
+
+| # | Objective | Threshold | Measured as |
+| :-- | :--- | :--- | :--- |
+| O12 | Gold daily cost reconciles with Silver | ±0.01 USD per org-day | sum comparison after each run |
+| O13 | Re-running any step does not duplicate rows | row counts unchanged | re-run on the same input, compare counts |
+| O14 | Revenue converted per invoice, never at one blended rate | 100% of invoices use their own `exchange_rate_to_usd` | 240 invoices across USD/ARS/EUR |
+
+## 2. Why this is a Big Data problem (5V)
+
+Three Vs dominate this case and they are the ones the architecture is actually built around:
+**velocity, variety and veracity**. Volume is the weakest V in the data we were handed — 13 MB — so
+it is the one that has to be argued by projection rather than by what is on disk. Every figure in
+the Evidence column is measured in `notebooks/01_landing_exploration.ipynb`.
+
+| V | Weight here | Evidence measured in the notebook | What it forces in the design |
+| :--- | :--- | :--- | :--- |
+| **Velocity** | **Dominant** | Usage arrives as 120 JSONL parts meant to be read as micro-batches. Replayed in order, a 1-day watermark would treat **97.5%** of events as late, 7 days **87.6%**, 30 days **49.6%**. | Structured Streaming for ingestion, but **no stateful windowed aggregation**. Daily marts are recomputed in batch, so a late event lands in the day it belongs to. This is what makes the pattern Lambda-style. |
+| **Variety** | **Dominant** | Two formats (7 CSV masters + JSONL events). Two event layouts: v1 carries 11 fields, v2 carries 12, GenAI v2 carries 13. The same `value` field is written as a JSON **number 41,014** times and as a **quoted string 1,309** times. `unit` is absent on 2,075 events. Billing spans **3 currencies**. | One explicit superset schema instead of inference; `value` read as string and cast in Silver; conformance of services and regions in Silver; per-invoice currency conversion before any revenue sum. |
+| **Veracity** | **Dominant** | **211** events below −0.01 USD. Cost p99 is **16.69** while the max is **317.43** — a 19× tail. `nps_score` is outside 0–100 on **17 of 80** orgs (range −38 to 101). **877** events have a null `value`; **240** tickets have no `resolved_at`. | Impute-first quality rules with a Quarantine zone for genuine contradictions, rather than dropping files; anomaly detection by relative measure (z-score / MAD / percentile), never a fixed threshold; NPS treated as a validity flag, not averaged. |
+| **Volume** | Secondary today | 13 MB total: 43,200 events (299 B each) over 60 days, ~720 events/day. Projected to real provider scale below. | Partition events by `event_date` only, Parquet + Snappy, and keep file sizes under control. The design must hold when the projection is real, not just at 13 MB. |
+| **Value** | The payoff | One pipeline feeds **5 mandatory queries** across **3 domains** from the same conformed data. | Shared Silver layer, domain-specific Gold marts, query-first modelling in Cassandra. |
+
+### 2.1 Projecting volume to a real provider
+
+The dataset is a scale model. To check that the architecture is sized for the real thing, we
+project it with assumptions stated explicitly — the five below are inputs, not measurements.
+
+| | Assumption | This dataset | Projected |
+| :-- | :--- | :--- | :--- |
+| A1 | Billable organizations | 80 | 50,000 |
+| A2 | Metered resources per org | 5 (measured: 400 / 80) | 200 |
+| A3 | Metering samples per resource per day | 1.8 (measured: 43,200 / 400 / 60) | 4,320 — 3 metrics sampled every 60 s |
+| A4 | Raw event payload | 299 B (measured) | 300 B |
+| A5 | Parquet + Snappy compression vs raw JSON | — | 8× |
+
+Applying A1–A3, `events/day = orgs × resources × samples`:
+
+| Metric | This dataset | Projected | Factor |
+| :--- | ---: | ---: | ---: |
+| Events per day | 720 | 43,200,000,000 | 6 × 10⁷ |
+| Sustained ingest rate | 0.008 events/s | **500,000 events/s** | — |
+| Raw JSON per day | 210 KiB | **~13 TB** | — |
+| Parquet per day (A5) | — | ~1.6 TB | — |
+| Parquet per year | — | **~0.6 PB** | — |
+
+At 500k events/s and 0.6 PB/year, single-node tooling is out and the choices in this document stop
+being academic: a partitioned object-store lake, a distributed engine, and a wide-column store for
+serving are the minimum. At 13 MB none of it is necessary — which is exactly why the justification
+rests on velocity, variety and veracity, with volume as the argument for why the design must
+survive growth.
 
 ## 3. Source inventory
 
@@ -64,7 +154,7 @@ Row counts, null shares and duplicate-key checks for every source are measured i
 - **Schema change.** Events mix v1 and v2. v2 adds `carbon_kg` and, for genai, `genai_tokens`. A strict per-version schema would fail or drop the older rows. Mitigated by the superset schema below.
 - **Ambiguous types.** `value` arrives as a number, as text, or as null. A hard cast at read time turns the bad rows into nulls without telling us. Mitigated by reading `value` as `string` in Bronze and casting in Silver, where a failed cast is quarantined instead of silently lost.
 - **Bad amounts.** Costs and invoice subtotals can be negative, and billing is not all USD. Summing them raw will distort FinOps numbers.
-- **Nulls on facts we need.** Open tickets have no resolution time, CSAT and NPS are often empty. Averages that ignore that will look better than they are.
+- **Nulls on facts we need.** Open tickets have no resolution time, CSAT and NPS are often empty, and 2,075 events arrive without a `unit`. Averages that ignore that will look better than they are. Mitigated by imputing only what another field already determines (`unit` from `metric`, flagged `unit_imputed`) and otherwise keeping the null as a null: a missing `value` contributes nothing to a usage sum rather than a zero.
 
 ### Event superset schema
 

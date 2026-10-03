@@ -101,15 +101,29 @@ Silver. This is the measured reason for a Lambda-style design.
 
 ### Events
 
-| check | events | action |
-| --- | --- | --- |
-| event_id is null | 0 | reject |
-| event_id duplicated | 0 | dedupe on re-run |
-| cost_usd_increment < -0.01 | 211 | flag as anomaly |
-| unit is null while value is present | 2038 | quarantine |
-| value is null | 877 | keep, cost still valid |
-| org_id not in customers_orgs | 0 | reject |
-| resource_id not in resources | 0 | reject |
+Impute-first, quarantine-last. `pct_cost` is the share of total `cost_usd_increment` each rule
+touches — the figure that decides whether a rule may reject rows at all.
+
+| rule | zone | events | pct_events | pct_cost | action |
+| --- | --- | --- | --- | --- | --- |
+| event_id is null | quarantine | 0 | 0.0 | 0.0 | cannot dedupe or trace |
+| metric not in the known set | quarantine | 0 | 0.0 | 0.0 | cannot map to a feature |
+| unit contradicts metric | quarantine | 0 | 0.0 | 0.0 | two fields disagree |
+| value present but not castable to double | quarantine | 0 | 0.0 | 0.0 | unusable measurement |
+| org_id not in customers_orgs | quarantine | 0 | 0.0 | 0.0 | unjoinable |
+| resource_id not in resources | quarantine | 0 | 0.0 | 0.0 | unjoinable |
+| unit is null, metric is known | keep | 2075 | 4.8 | 4.92 | impute unit from metric, set unit_imputed = true |
+| value is null | keep | 877 | 2.03 | 2.01 | null (not zero) in usage sums; cost still counted |
+| cost_usd_increment < -0.01 | keep | 211 | 0.49 | -0.62 | cost_anomaly_flag = true |
+
+`metric` determines `unit` 1:1 in the data, which is what makes imputation safe instead of a guess.
+
+**Quarantine baseline: 0 events (0.0% of events, 0.0% of cost).**
+Nothing here is rejected. Kept and flagged instead: 2075 events
+(4.8% of events, 4.92% of cost) with an imputed `unit`, and
+877 events (2.03%, 2.01% of cost) with a
+null `value` whose cost is still counted. Duplicate `event_id`: 0 — dedupe is still
+required because a re-run would re-read the same part files.
 
 ### Masters and billing
 
