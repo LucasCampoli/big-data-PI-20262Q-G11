@@ -214,7 +214,7 @@ is one implementation of every metric.
 
 | Path | Sources | Trigger | Writes | Stateful |
 | :--- | :--- | :--- | :--- | :--- |
-| Streaming | `usage_events_stream/*.jsonl` | micro-batch, 1 min | Bronze and Silver events, append | No, only `dropDuplicates` on `event_id` for in-flight re-delivery |
+| Streaming | `usage_events_stream/*.jsonl` | micro-batch, 1 min | Bronze events, append | No, only `dropDuplicates` on `event_id` for in-flight re-delivery |
 | Batch daily | Silver events and dimensions | daily, after 00:00 UTC | Gold daily marts: Q1, Q2, Q3, Q5, anomalies | n/a |
 | Batch snapshot | 7 CSV masters | daily | Bronze and Silver dimensions | n/a |
 | Batch monthly | `billing_monthly.csv` | monthly | Gold `revenue_by_org_month`, Q4 | n/a |
@@ -263,7 +263,7 @@ Five zones. Each has one kind of writer, a declared format, and a stated conditi
 
 | | |
 | :--- | :--- |
-| Who writes | Batch Spark jobs for conform, repair and join, plus the streaming append path. Writes overwrite the partition, which is what makes a re-run idempotent. |
+| Who writes | Batch Spark jobs only, for conform, repair and join. The streaming path stops at Bronze, because a micro-batch cannot write `event_date` partitions at a sane file size (§5.6). Writes overwrite the partition, which is what makes a re-run idempotent. |
 | Who reads | Gold jobs, and notebooks for ad-hoc work. |
 | Format | Parquet with Snappy. |
 | Partitioning | `event_date` for the usage fact, different from Bronze on purpose (§5.6). Dimensions unpartitioned. |
@@ -411,7 +411,137 @@ Landing ──parse under explicit schema──▶ Bronze ──pass rejecting r
 Each arrow is a gate with a stated condition. The only way out of Quarantine is a fix plus a replay
 from Landing. Decisions behind these zones are in [`../DECISIONS.md`](../DECISIONS.md).
 
-## 6. Reference batch flow in MapReduce
+## 6. Architecture v1
+
+### 6.1 Diagram
+
+```mermaid
+---
+title: "Cloud Provider Analytics, architecture v1, 2026-10-03"
+---
+flowchart LR
+  classDef zone fill:#eef4fb,stroke:#4a6fa5,color:#17293f
+  classDef band fill:#f6f6f2,stroke:#9a9a8c,color:#2e2e26
+
+  subgraph SRC["Sources"]
+    direction TB
+    CSV["7 CSV masters<br/>orgs, users, resources, tickets,<br/>touches, NPS, billing"]
+    EVT["usage_events_stream<br/>120 JSONL parts"]
+  end
+
+  subgraph ING["Ingestion"]
+    direction TB
+    BAT["Batch loader<br/>PySpark, daily"]
+    STR["Structured Streaming<br/>1 min micro-batch"]
+  end
+
+  subgraph LAKE["Data Lake, Parquet and Snappy"]
+    direction TB
+    LND["Landing<br/>immutable, as delivered"]
+    BRZ["Bronze<br/>ingest_date"]
+    SLV["Silver<br/>event_date"]
+    GLD["Gold marts<br/>usage_date, month"]
+    QTN["Quarantine<br/>quarantine_date"]
+  end
+
+  subgraph PROC["Batch processing"]
+    direction TB
+    CNF["Conform and repair<br/>quality rules"]
+    AGG["Aggregate<br/>daily and monthly"]
+  end
+
+  CAS["Serving<br/>Cassandra / AstraDB<br/>query-first tables"]
+
+  subgraph CONS["Consumption"]
+    direction TB
+    FIN["FinOps<br/>Q1 Q2 Q4 Q6"]
+    SUP["Support<br/>Q3"]
+    PRD["Product<br/>Q5"]
+  end
+
+  CSV --> LND
+  EVT --> LND
+  LND -->|masters, billing| BAT --> BRZ
+  LND -->|events| STR --> BRZ
+  BRZ --> CNF --> SLV --> AGG --> GLD --> CAS
+  CAS --> FIN
+  CAS --> SUP
+  CAS --> PRD
+
+  BAT -.->|parse failures| QTN
+  STR -.->|parse failures| QTN
+  CNF -.->|rejecting rules| QTN
+  QTN -.->|fix, then replay| LND
+
+  subgraph XC["Cross-cutting capabilities"]
+    direction LR
+    GOV["Governance<br/>zone ownership,<br/>promotion rules"]
+    DQ["Quality<br/>rules and<br/>measured baselines"]
+    MD["Metadata<br/>explicit schemas,<br/>data dictionary"]
+    LIN["Lineage<br/>ingest_ts, source_file,<br/>run_id, repair flags"]
+    SEC["Security<br/>secrets outside git,<br/>least privilege"]
+    OBS["Observability<br/>freshness, volumes,<br/>quarantine size"]
+  end
+
+  XC -.->|applies to every zone and path| LAKE
+
+  class LND,BRZ,SLV,GLD,QTN zone
+  class GOV,DQ,MD,LIN,SEC,OBS band
+```
+
+Solid arrows carry data that passed its gate. Dotted arrows are the quality path: rejects into
+Quarantine, and the one way back, a fix plus a replay from Landing. The streaming path stops at
+Bronze on purpose (§5.6). Nothing reads Quarantine except an engineer.
+
+### 6.2 Batch flow
+
+| # | Step | Tool | Input | Output | Key setting |
+| :-- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Pick up new files | PySpark, ingested-files log | Landing listing | file list | log keyed on file name, so a re-run skips what it already read |
+| 2 | Load masters and billing | `spark.read.csv` | 7 CSV files | Bronze dimensions, billing by `month` | explicit schema, `escape='"'` for `tags_json` |
+| 3 | Conform and repair | PySpark | Bronze events, dimensions | Silver `usage_events` | `try_cast`, impute `unit`, `dropDuplicates("event_id")`, overwrite by `event_date` |
+| 4 | Route rejects | PySpark write | rows failing a rejecting rule | Quarantine | `rule_name` as a column, never a partition |
+| 5 | Aggregate marts | `groupBy().agg()` | Silver | Gold daily marts and monthly revenue | `coalesce` for file size, `partitionBy("usage_date")`, fx forced to 1.0 for USD |
+| 6 | Reconcile, then publish | PySpark, Cassandra connector | Silver and Gold | Cassandra tables | gate at 0.01 USD per org-day, then upsert on the mart key |
+
+### 6.3 Streaming flow
+
+| # | Step | Tool | Input | Output | Key setting |
+| :-- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Watch the directory | `readStream.json` | `usage_events_stream/` | micro-batch frame | explicit superset schema, `maxFilesPerTrigger` to bound a batch |
+| 2 | Stamp lineage | PySpark | micro-batch frame | adds `ingest_ts`, `ingest_date`, `source_file` | `input_file_name()` |
+| 3 | Drop in-flight repeats | `dropDuplicatesWithinWatermark` | micro-batch frame | deduped frame | key `event_id`, short watermark, only for re-delivery |
+| 4 | Split parse failures | PySpark | micro-batch frame | clean rows, corrupt rows | `columnNameOfCorruptRecord` |
+| 5 | Append to Bronze | `writeStream`, Parquet | clean rows | Bronze by `ingest_date` | one file per micro-batch, `checkpointLocation` |
+| 6 | Append rejects | `writeStream`, Parquet | corrupt rows | Quarantine | its own checkpoint, so one path cannot block the other |
+
+Trigger is `processingTime="1 minute"`. There is no windowed aggregation anywhere in this flow, which
+is the whole of D3 and D4: the watermark exists only to bound the dedupe state, not to close a
+window.
+
+### 6.4 Requirement to component matrix
+
+Requirements are the mandatory capabilities of §4.4 of the brief. The V column names the one that
+drives the requirement, and the decision column points at the record that settles it.
+
+| Requirement (§4.4) | V | Component | Decision |
+| :--- | :--- | :--- | :--- |
+| Batch ingestion: read CSV and JSON from Landing, write partitioned Bronze Parquet with explicit schemas and technical columns | Variety | Batch loader, Bronze | D1, D4, D5 |
+| Streaming ingestion: explicit schema, watermark, dedupe by `event_id`, late data, checkpointing | Velocity | Structured Streaming, Bronze | D1, D3, D5 |
+| Quality: verifiable rules, invalid rows separated, quarantine in Parquet | Veracity | Conform and repair, Quarantine | D6, D7, D10 |
+| Silver: normalize numbers, dates, regions and services, join dimensions, handle nulls and outliers, v1 and v2 compatibility | Variety, Veracity | Conform and repair, Silver | D1, D2, D6 |
+| Features: `daily_cost_usd`, `requests`, `cpu_hours`, `storage_gb_hours`, `genai_tokens`, `carbon_kg` | Value | Aggregate, Gold | D6, §7 |
+| Anomalies: flags or scores by a justified method | Veracity | Aggregate, `cost_anomaly_mart` | D12 (open) |
+| Gold: marts for FinOps, Support and Product with clear grains | Value | Gold | D4, §1.2 |
+| Serving: Cassandra keyspace, query-first tables, load from Spark | Value | Cassandra, publish step | D11 (open), §1.2 |
+| Idempotency: reprocess without duplicates | Veracity | Partition overwrite, upsert, ingested-files log | D8 |
+| Performance: sensible partitioning, file control, coalesce, evidence of sizes and paths | Volume | Bronze, Silver, Gold layout | D5 |
+| Governance: quality, metadata, lineage, ownership, security, observability | all | Cross-cutting band in §6.1 | D4, D6, D8 |
+| Documentation: diagram, data dictionary, decisions, trade-offs, tests, quickstart, run evidence | all | `docs/`, `DECISIONS.md`, `evidence/`, `README.md` | this document |
+
+Two rows point at open decisions, D11 and D12. Both are deliberate and both are due in delivery 2.
+
+## 7. Reference batch flow in MapReduce
 
 The brief asks for the batch processing expressed as MapReduce. We do not implement it in Hadoop.
 The point is to reason about where the data moves and what has to be true at each step, and then to
@@ -420,7 +550,7 @@ compare that with how Spark will actually run it.
 The flow computes `org_daily_usage_by_service`, which answers Q1 and Q2 and is the mandatory mart
 for delivery 2. Grain is one row per org, day and service.
 
-### 6.1 The job in one picture
+### 7.1 The job in one picture
 
 ```text
 Silver usage_events, Parquet by event_date
@@ -445,7 +575,7 @@ Silver usage_events, Parquet by event_date
      Gold org_daily_usage_by_service, partitioned by usage_date
 ```
 
-### 6.2 Input and splits
+### 7.2 Input and splits
 
 Input is Silver, not Bronze. Conformance, the `unit` imputation, the `value` cast, the dedupe on
 `event_id` and the quarantine split all happened upstream (§5.3), so the mapper can assume one clean
@@ -461,7 +591,7 @@ directories. Each split is one block of one file, and each split becomes one map
 | Splits per day at 128 MB | 1 | ~12,500 |
 | Reduce keys per day, orgs x services | 480 | 300,000 |
 
-### 6.3 Map
+### 7.3 Map
 
 The mapper projects one event into the mart grain. Each measure travels as a pair, a sum and a count
 of present values, because a null measurement must not become a zero downstream (§5.7).
@@ -497,7 +627,7 @@ map(record):
 One event produces exactly one key-value pair. The mapper does no filtering, so the reduce side can
 report how many events a figure rests on.
 
-### 6.4 Combiner
+### 7.4 Combiner
 
 Every field in the value is a sum or a count, so the combiner is the same function as the reducer:
 
@@ -514,7 +644,7 @@ The combiner is where the volume is won. At projected scale a day has 12,500 map
 distinct keys, so without it the shuffle carries 43.2 billion records. With it each map task emits at
 most the number of distinct keys it saw.
 
-### 6.5 Partitioner
+### 7.5 Partitioner
 
 ```text
 partition(key, R) = hash(org_id, usage_date, service) % R
@@ -528,7 +658,7 @@ The cost of that choice is that one org's rows end up spread across reducers, so
 cannot be computed in the same pass. Q2 does not need it: it is a 14-day range scan inside one
 Cassandra partition, ranked at read time over at most 84 rows (§1.2).
 
-### 6.6 Shuffle, sort and reduce
+### 7.6 Shuffle, sort and reduce
 
 The framework groups by key and delivers each reducer its keys in sorted order. Sorting by
 `(org_id, usage_date, service)` means a reducer walks one org's days contiguously, which suits the
@@ -556,14 +686,14 @@ reduce(key, values):
 The `if count > 0 else null` is where O7 is enforced. A day with no usable `requests` reports null
 rather than 0, so an average over the mart is not dragged down by days that were never measured.
 
-### 6.7 Output
+### 7.7 Output
 
 One record per key, written to `datalake/gold/org_daily_usage_by_service/usage_date=.../`. The number
 of output files equals the number of reducers, so R is chosen for file size rather than for
 parallelism alone, which is the same concern as §5.6. The write overwrites the `usage_date`
 partitions it computed, so re-running a date range is idempotent (D8).
 
-### 6.8 Negative costs and the two schema versions
+### 7.8 Negative costs and the two schema versions
 
 These are the two places a naive implementation goes wrong.
 
@@ -576,7 +706,7 @@ No stage in this flow reads `schema_version` to decide anything. That is the pay
 schema once, and it is the property to preserve when a v3 arrives: add the field to the schema and
 to the value tuple, and no stage logic changes.
 
-### 6.9 How Spark runs the same thing
+### 7.9 How Spark runs the same thing
 
 | MapReduce stage | Spark equivalent |
 | :--- | :--- |
