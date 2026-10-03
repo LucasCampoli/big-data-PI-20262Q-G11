@@ -1,0 +1,39 @@
+---
+title: "Cloud Provider Analytics, arquitectura v1, 2026-10-03"
+---
+flowchart TB
+  classDef zone fill:#eef4fb,stroke:#4a6fa5,color:#17293f
+  classDef band fill:#f6f6f2,stroke:#9a9a8c,color:#2e2e26
+
+  SRC["Fuentes · 6 maestros CSV + facturación · usage_events_stream, 120 partes JSONL"]
+  LND["Landing · inmutable, como la recibimos"]
+  BRZ["Bronze · ingest_date"]
+  SLV["Silver · event_date"]
+  GLD["Marts Gold · usage_date, month"]
+  QTN["Quarantine · quarantine_date"]
+
+  subgraph SERV["Serving · Cassandra / AstraDB"]
+    direction LR
+    CAS["Marts finales · query-first"]
+    PRV["Intradía provisoria · costo, requests"]
+  end
+
+  CONS["Consumo · FinOps Q1 Q2 Q4 Q6 · Soporte Q3 · Producto Q5"]
+  XC["Transversales · gobierno y dueño por zona · reglas de calidad y baselines · metadatos y esquemas explícitos · linaje · seguridad · observabilidad"]
+
+  SRC --> LND
+  LND -->|"carga batch, diaria"| BRZ
+  LND -->|"streaming, 1 min, append"| BRZ
+  LND -->|"streaming foreachBatch"| PRV
+  BRZ -->|"conformar y reparar, batch"| SLV
+  SLV -->|"agregar diario y mensual"| GLD
+  GLD -->|"upsert por clave del mart"| CAS
+  GLD -.->|"cierre en D+1"| PRV
+  SERV --> CONS
+
+  LND -.->|fallas de parseo| QTN
+  BRZ -.->|reglas de rechazo| QTN
+  QTN -.->|"arreglar y reprocesar"| LND
+
+  class LND,BRZ,SLV,GLD,QTN zone
+  class XC band

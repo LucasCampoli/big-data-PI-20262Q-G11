@@ -1,39 +1,52 @@
 # big-data-PI-20262Q-G11
 
-Integrative project for Big Data, group 11. Cloud Provider Analytics: ingest and shape customer data for FinOps, Support, and Product.
+Proyecto integrador de Big Data, grupo 11. Cloud Provider Analytics: ingestar y conformar datos de
+clientes para FinOps, Soporte y Producto.
 
-This repo is still at the design stage. Implementation comes later.
+El repo está todavía en etapa de diseño. La implementación viene después.
 
-Design document: [docs/design.md](docs/design.md). Problem and objectives, the 5Vs, the source
-profile, the architectural pattern, the Data Lake, architecture v1, the MapReduce reference flow and
-the plan.
+Documento de diseño: [docs/design.md](docs/design.md). Es la puerta de entrada: problema y objetivos,
+las 5V, el perfil de las fuentes, el patrón arquitectónico, el Data Lake, la arquitectura v1, el
+flujo batch expresado como MapReduce y el plan. El detalle de apoyo está en
+[docs/appendix.md](docs/appendix.md).
 
-Data evidence: [evidence/landing_profile.md](evidence/landing_profile.md), produced by
+Para generar el PDF, armamos el HTML imprimible y lo imprimimos desde el navegador en A4:
+
+```bash
+python scripts/build_entrega_html.py .   # escribe docs/entrega-1.html
+```
+
+Ese archivo junta el diseño, el apéndice y las decisiones en un solo documento, con el diagrama
+embebido. Está en el `.gitignore` a propósito, así se regenera siempre desde el Markdown en lugar de
+quedar viejo dentro del repo.
+
+Evidencia de datos: [evidence/landing_profile.md](evidence/landing_profile.md), producido por
 [notebooks/01_landing_exploration.ipynb](notebooks/01_landing_exploration.ipynb).
 
-Decisions, with alternatives and trade-offs: [DECISIONS.md](DECISIONS.md).
+Decisiones, con alternativas y trade-offs: [DECISIONS.md](DECISIONS.md).
 
-## Layout
+## Estructura
 
 ```text
 README.md
 DECISIONS.md
 requirements.txt
-docs/          design notes and the course brief
-data/          sample data; raw files go in data/landing/
-src/           processing code (delivery 2)
-notebooks/     PySpark exploration of Landing
-tests/         tests and quarantine fixtures (delivery 2)
-config/        paths.env.example — copy and adjust locally, no secrets
-infra/         runtime notes (later)
-evidence/      generated profiles and logs for deliveries
+docs/          diseño, apéndice y la consigna
+data/          datos de muestra; los archivos crudos van en data/landing/
+src/           código de procesamiento (entrega 2)
+notebooks/     exploración de Landing con PySpark
+tests/         pruebas y fixtures de quarantine (entrega 2)
+config/        paths.env.example, copiar y ajustar local, sin secretos
+infra/         notas de runtime (más adelante)
+evidence/      perfiles generados, el checklist de entrega, logs
+scripts/       armado del HTML imprimible
 ```
 
-## Getting the dataset
+## Cómo conseguir el dataset
 
-The Landing files are not committed, so each person gets their own copy. Download the Cloud Provider
-Analytics challenge dataset handed out by the course and unzip it, then copy the contents of its
-`datalake/landing/` directory into `data/landing/` so the tree looks like this:
+Los archivos de Landing no se commitean, de modo que cada uno se arma su copia. Hay que descargar el
+dataset del desafío Cloud Provider Analytics que entrega la cátedra, descomprimirlo y copiar el
+contenido de su carpeta `datalake/landing/` dentro de `data/landing/`, de manera que quede así:
 
 ```text
 data/landing/customers_orgs.csv
@@ -43,17 +56,17 @@ data/landing/support_tickets.csv
 data/landing/marketing_touches.csv
 data/landing/nps_surveys.csv
 data/landing/billing_monthly.csv
-data/landing/usage_events_stream/events_part_0000.jsonl   (120 files)
+data/landing/usage_events_stream/events_part_0000.jsonl   (120 archivos)
 ```
 
-If the archive came from a Windows download, delete the `*:Zone.Identifier` files it may carry.
+Si el zip se bajó desde Windows, conviene borrar los archivos `*:Zone.Identifier` que suele traer.
 
-`data/landing/` is git-ignored and Landing is never edited, so a fresh copy is always safe. Point
-`DATA_LANDING` at a different directory if you keep the files elsewhere.
+`data/landing/` está en el `.gitignore` y a Landing no se la edita nunca, por lo que rehacer la copia es
+siempre seguro. Si los archivos están en otra ruta, apuntar `DATA_LANDING` ahí.
 
-## Running the exploration notebook
+## Cómo correr el notebook de exploración
 
-With the dataset in place:
+Con el dataset en su lugar:
 
 ```bash
 python3 -m venv .venv
@@ -61,37 +74,39 @@ python3 -m venv .venv
 .venv/bin/jupyter lab notebooks/01_landing_exploration.ipynb
 ```
 
-PySpark needs a JDK 17 or 21 on the path. Set `JAVA_HOME` if your default is newer, and
-`DATA_LANDING` if the Landing files live somewhere other than `data/landing/`.
+PySpark necesita un JDK 17 o 21 en el PATH. Si el JDK por defecto es más nuevo, hay que setear
+`JAVA_HOME`, y `DATA_LANDING` si los archivos de Landing no están en `data/landing/`.
 
-Running all cells rewrites the three files in `evidence/`, so the committed numbers are reproducible
-from the Landing data.
+Correr todas las celdas reescribe los tres archivos de `evidence/`, y los números que están
+commiteados se pueden reproducir desde los datos de Landing.
 
-Copy `config/paths.env.example` if you need a local path override. Do not commit `.env` or credentials.
+Copiar `config/paths.env.example` si hace falta sobreescribir una ruta local. No commitear `.env` ni
+credenciales.
 
-## Conventions
+## Convenciones
 
-Everything in the repo is in English: code, documentation and commit messages.
+El código, los nombres de tablas, columnas y archivos, el notebook y los mensajes de commit van en
+inglés. La documentación que lee la cátedra va en español.
 
-Branches. `main` holds what gets delivered, and it is what the deadline is evaluated on. Work on
-short-lived branches named `<area>/<topic>`, for example `silver/quality-rules` or
-`serving/keyspace`, and merge into `main` when the piece is complete. Areas follow the roles in
+Ramas. `main` tiene lo que se entrega, y es lo que se evalúa a la hora del corte. Se trabaja en ramas
+cortas con nombre `<área>/<tema>`, por ejemplo `silver/quality-rules` o `serving/keyspace`, y se
+mergean a `main` cuando la pieza está terminada. Las áreas siguen los roles de
 [docs/design.md](docs/design.md) §8.4: `ingestion`, `silver`, `marts`, `serving`, `docs`.
 
-Commits. A short subject in the imperative, under about 60 characters, saying what the commit does:
-"Add the streaming job", not "added streaming" or "changes". Use the body only when the reason is
-not obvious from the diff, and keep it brief. List co-authors with `Co-authored-by:` trailers when
-the work was done together. One logical change per commit.
+Commits. Asunto corto en imperativo y en inglés, de menos de 60 caracteres, que diga qué hace el
+commit: "Add the streaming job", no "added streaming" ni "changes". El cuerpo solo cuando el motivo
+no se ve en el diff, y breve. Los co-autores van con trailers `Co-authored-by:` cuando el trabajo fue
+compartido. Un cambio lógico por commit.
 
-Naming.
+Nombres.
 
-| Thing | Convention | Example |
+| Qué | Convención | Ejemplo |
 | :--- | :--- | :--- |
-| Python modules and functions | `snake_case` | `quality_rules.py` |
-| Notebooks | `NN_topic.ipynb`, numbered in run order | `01_landing_exploration.ipynb` |
-| Lake paths | `datalake/<zone>/<entity>/<partition>=<value>/` | `datalake/silver/usage_events/event_date=2025-08-01/` |
-| Columns | `snake_case` | `cost_usd_increment` |
-| Technical columns | fixed set, same names in every zone | `ingest_ts`, `ingest_date`, `source_file`, `processed_ts`, `run_id` |
-| Repair and quality flags | boolean, named for what happened | `unit_imputed`, `fx_overridden`, `cost_anomaly_flag`, `dq_status` |
-| Gold marts | `<grain>_<subject>_by_<dimension>` | `org_daily_usage_by_service` |
-| Evidence files | `<source>_<artifact>.<ext>`, regenerated not hand-edited | `landing_profile.md` |
+| Módulos y funciones de Python | `snake_case` | `quality_rules.py` |
+| Notebooks | `NN_topic.ipynb`, numerados en orden de ejecución | `01_landing_exploration.ipynb` |
+| Rutas del lake | `datalake/<zona>/<entidad>/<partición>=<valor>/` | `datalake/silver/usage_events/event_date=2025-08-01/` |
+| Columnas | `snake_case` | `cost_usd_increment` |
+| Columnas técnicas | conjunto fijo, mismos nombres en todas las zonas | `ingest_ts`, `ingest_date`, `source_file`, `processed_ts`, `run_id` |
+| Flags de reparación y calidad | booleanos, con el nombre de lo que pasó | `unit_imputed`, `fx_overridden`, `cost_anomaly_flag`, `dq_status` |
+| Marts de Gold | `<grano>_<sujeto>_by_<dimensión>` | `org_daily_usage_by_service` |
+| Archivos de evidencia | `<fuente>_<artefacto>.<ext>`, se regeneran, no se editan a mano | `landing_profile.md` |

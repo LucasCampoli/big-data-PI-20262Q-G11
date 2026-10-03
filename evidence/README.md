@@ -1,13 +1,17 @@
-# Evidence
+# Evidencia
 
-Generated artifacts that back the claims in `docs/design.md`. Do not edit by hand, re-run the
-notebook that produces them.
+Artefactos generados que respaldan lo que afirma `docs/design.md`. No se editan a mano: se regeneran
+corriendo el notebook que los produce.
 
-| File | Content |
+| Archivo | Contenido |
 | :--- | :--- |
-| `landing_profile.md` | Full Landing profile: per-source grain and row counts, nulls, event schema versions, the `value` type inconsistency, cost distribution, the late-data measurement, Bronze and Silver partitioning, and the baseline for every quality rule. |
-| `landing_source_profile.csv` | One row per source: format, files, rows, columns, grain key, duplicate keys, date range. |
-| `landing_column_profile.csv` | One row per column: null count and null share. |
+| `landing_profile.md` | Perfil completo de Landing: grano y conteo de filas por fuente, nulos, versiones de esquema de los eventos, la inconsistencia de tipo en `value`, la distribución de costos, la medición de late data, el particionado de Bronze y Silver, y la base de cada regla de calidad. |
+| `landing_source_profile.csv` | Una fila por fuente: formato, archivos, filas, columnas, clave de grano, claves duplicadas, rango de fechas. |
+| `landing_column_profile.csv` | Una fila por columna: cantidad de nulos y proporción de nulos. |
+| `delivery_1_checklist.md` | El checklist §9.1 y los criterios de aceptación §5.4, con dónde está cada ítem. |
 
-All three come from `notebooks/01_landing_exploration.ipynb`. Screenshots and run logs for the
-deliveries also go here.
+Los tres perfiles salen de `notebooks/01_landing_exploration.ipynb`. Están en inglés porque son
+salida del notebook, que se mantiene en inglés junto con el código; el checklist, en cambio, lo
+escribimos nosotros y va en español como el resto de la documentación.
+
+Las capturas y los logs de corrida de las entregas también van acá.
