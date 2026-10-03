@@ -127,14 +127,46 @@ required because a re-run would re-read the same part files.
 
 ### Masters and billing
 
-| check | rows |
-| --- | --- |
-| customers_orgs: nps_score null | 11 |
-| customers_orgs: nps_score outside 0..100 | 17 |
-| nps_surveys: nps_score null | 19 |
-| support_tickets: resolved_at null (still open) | 240 |
-| support_tickets: csat null | 254 |
-| support_tickets: severity = critical | 56 |
-| support_tickets: sla_breached true | 95 |
-| billing_monthly: credits null | 137 |
-| billing_monthly: subtotal negative | 13 |
+Per-source rules. The action depends on whether the *row* is untrustworthy or only a *field*.
+Scale assumptions: `csat` treated as 1-5, both NPS columns as [-100, 100].
+
+| source | rule | rows | action | why |
+| --- | --- | --- | --- | --- |
+| customers_orgs | nps_score outside [-100, 100] | 1 | null + flag | null nps_score, set nps_score_invalid; the org row feeds every join |
+| customers_orgs | nps_score is null | 11 | keep | no survey is not an error |
+| nps_surveys | nps_score outside [-100, 100] | 0 | null + flag | same scale as customers_orgs |
+| support_tickets | csat outside 1-5 | 40 | null + flag | null csat, set csat_invalid; severity and SLA still feed Q3 |
+| support_tickets | resolved_at before created_at | 0 | quarantine | contradiction with no determinable repair |
+| users | last_login before created_at | 232 | flag | timestamps are low-trust; identity fields stay usable |
+| users | created_at before the org signup_date | 249 | flag | same root cause; see users_timestamps_low_trust |
+| billing_monthly | subtotal < 0 | 13 | flag | credit or adjustment; kept in revenue, flagged subtotal_negative |
+| billing_monthly | currency = USD and exchange_rate_to_usd != 1.0 | 160 | repair + flag | force fx = 1.0, set fx_overridden; 1 USD is 1 USD by definition |
+| billing_monthly | credits is null | 137 | impute | treat as zero credit, not unknown |
+| marketing_touches | converted = true while clicked = false | 96 | flag | view-through conversion is plausible, so not a contradiction |
+
+Master rows quarantined: **0 of 4,112 (0.0%)**.
+Event rows quarantined: **0 (0.0%)**. Real data rejects almost nothing,
+so the quarantine path is exercised by the synthetic fixtures in `tests/fixtures/quarantine/`.
+
+The `users` timestamps are the clearest case for flagging over rejecting: 462 of
+800 rows (57.8%) fail at least one of the two rules, far more than a causally
+generated dataset would produce, so the three timestamps were evidently drawn independently. The
+identity fields are unaffected, so the rows are kept and the timestamps marked low-trust.
+
+Forcing `exchange_rate_to_usd = 1.0` on USD invoices moves total revenue by only **+0.07%**
+because the noise is symmetric, but the per-invoice error spans **-14.5% to
++11.8%** — and Q4 is served per org and month, not in aggregate.
+
+## 8. Bronze vs Silver partitioning
+
+Each of the 120 micro-batches spans ~59.8 distinct event dates, so the
+partition column decides how many files a streaming write produces:
+
+| bronze_partition | files_written | avg_rows_per_file |
+| --- | --- | --- |
+| event_date | 7180 | 6.0 |
+| ingest_date | 120 | 360.0 |
+
+Bronze is therefore partitioned by `ingest_date` (one file per micro-batch) and Silver/Gold by
+`event_date`, rebuilt in batch and coalesced per partition. Bronze retention is measured on
+`ingest_date`: on `event_date`, a 90-day window would already have expired this entire dataset.
