@@ -10,15 +10,18 @@ las 5V, el perfil de las fuentes, el patrón arquitectónico, el Data Lake, la a
 flujo batch expresado como MapReduce y el plan. El detalle de apoyo está en
 [docs/appendix.md](docs/appendix.md).
 
-Para generar el PDF, armamos el HTML imprimible y lo imprimimos desde el navegador en A4:
+El documento que entregamos es [docs/entrega-1.pdf](docs/entrega-1.pdf): 21 páginas en A4 con el
+diseño, el apéndice y el índice de decisiones en un solo archivo, con el diagrama embebido.
+
+Para regenerarlo después de editar el Markdown, se arma el HTML imprimible y se imprime desde el
+navegador en A4, con fondos activados y sin encabezado ni pie del navegador:
 
 ```bash
 python scripts/build_entrega_html.py .   # escribe docs/entrega-1.html
 ```
 
-Ese archivo junta el diseño, el apéndice y las decisiones en un solo documento, con el diagrama
-embebido. Está en el `.gitignore` a propósito, así se regenera siempre desde el Markdown en lugar de
-quedar viejo dentro del repo.
+El HTML está en el `.gitignore` a propósito, para que salga siempre del Markdown en lugar de quedar
+viejo dentro del repo. El PDF sí se commitea, porque es el artefacto que se entrega.
 
 Evidencia de datos: [evidence/landing_profile.md](evidence/landing_profile.md), producido por
 [notebooks/01_landing_exploration.ipynb](notebooks/01_landing_exploration.ipynb).
