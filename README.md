@@ -7,7 +7,7 @@ las 5V, el perfil de las fuentes, el patrón arquitectónico, el Data Lake, la a
 flujo batch expresado como MapReduce y el plan. El detalle de apoyo está en
 [docs/appendix.md](docs/appendix.md).
 
-El documento que entregamos es [docs/entrega-1.pdf](docs/entrega-1.pdf): 21 páginas en A4 con el
+El documento que entregamos es [docs/entrega-1.pdf](docs/entrega-1.pdf): 18 páginas en A4 con el
 diseño, el apéndice y el índice de decisiones en un solo archivo, con el diagrama embebido.
 
 Para regenerarlo después de editar el Markdown, se arma el HTML imprimible y se imprime desde el
