@@ -1,0 +1,24 @@
+run_ts:   2026-10-05T16:23:58Z
+commit:   65361e3
+python:   Python 3.12.3
+pyspark:  4.2.0
+java:     openjdk version "21.0.12" 2026-07-21
+landing:  data/landing
+
+[NbConvertApp] Converting notebook notebooks/01_landing_exploration.ipynb to notebook
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+WARNING: Using incubator modules: jdk.incubator.vector
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+26/10/05 16:24:04 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+[NbConvertApp] Writing 83282 bytes to /tmp/tmp.7QfIL0g2LB/01_landing_exploration.ipynb
+elapsed:  53 s
+
+evidence files:
+  171 evidence/landing_profile.md
+    9 evidence/landing_source_profile.csv
+   66 evidence/landing_column_profile.csv
+  246 total
+
+evidence diff against the committed version, ignoring the run date (empty means reproduced):

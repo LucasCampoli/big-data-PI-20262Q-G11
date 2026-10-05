@@ -1,0 +1,21 @@
+org_id,org_name,industry,hq_region,plan_tier,is_enterprise,signup_date,sales_rep,lifecycle_stage,marketing_source,nps_score
+org_8mdd4v30,Apex Data 3,Manufacturing,sa-east,standard,False,2025-05-30,rep_b,active,ads,12.0
+org_41ibljh7,Gamma Cloud 8,Education,us-west,standard,False,2025-05-26,rep_c,active,ads,22.0
+org_5lxo6qji,Omega Labs 9,Healthcare,ap-south,free,False,2025-06-03,rep_d,at_risk,referral,12.0
+org_9t84azyt,Vertex Data 12,Fintech,ap-northeast,enterprise,False,2025-06-04,rep_b,active,referral,
+org_1t2tala7,Gamma Data 15,Media,eu-central,enterprise,False,2025-06-03,rep_b,active,event,41.0
+org_53lc58dr,Apex Digital 16,Energy,eu-west,standard,True,2025-05-10,rep_a,active,organic,11.0
+org_874frhoc,Vertex Data 25,Healthcare,us-east,free,False,2025-06-03,rep_d,churned,partner,26.0
+org_4zw9xa3k,Alpha Cloud 33,Manufacturing,us-west,standard,False,2025-06-10,rep_d,prospect,ads,
+org_5935a0l7,Omega Digital 40,Gaming,ap-south,standard,False,2025-05-08,rep_a,active,partner,2.0
+org_253j2d54,Zenith Tech 41,Gaming,sa-east,standard,False,2025-06-06,rep_b,active,ads,14.0
+org_7e8g8jdp,Zenith Digital 44,Manufacturing,eu-central,standard,True,2025-05-06,rep_d,active,ads,1.0
+org_0lvsnujz,Nova Cloud 45,Retail,us-east,standard,False,2025-05-19,rep_e,prospect,event,-1.0
+org_a7tz0ync,Omega Cloud 46,E-commerce,us-west,enterprise,False,2025-06-29,rep_e,active,organic,17.0
+org_3t60rjiw,Nimbus Cloud 56,Gaming,ap-south,enterprise,False,2025-06-25,rep_b,active,ads,41.0
+org_1swjckjl,Beta Tech 57,Government,eu-west,standard,True,2025-06-03,rep_e,active,organic,-4.0
+org_1n13jcat,Nimbus Tech 64,Healthcare,us-east,free,True,2025-07-02,rep_a,active,event,34.0
+org_9mx2x18h,Omega AI 65,Retail,us-west,standard,True,2025-06-30,rep_d,active,event,14.0
+org_afeyuhz1,Gamma Labs 66,Education,ap-south,standard,False,2025-05-16,rep_d,active,ads,50.0
+org_5iqvnb4g,Gamma Labs 73,Manufacturing,us-east,enterprise,False,2025-05-08,rep_e,at_risk,partner,36.0
+org_0lzjjege,Alpha Cloud 77,Media,eu-west,standard,False,2025-07-02,rep_e,active,referral,-7.0

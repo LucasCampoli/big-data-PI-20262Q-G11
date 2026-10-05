@@ -31,14 +31,14 @@ README.md
 DECISIONS.md
 requirements.txt
 docs/          diseño, apéndice y la consigna
-data/          datos de muestra; los archivos crudos van en data/landing/
+data/          muestra commiteada en data/sample/; los archivos crudos van en data/landing/
 src/           código de procesamiento (entrega 2)
 notebooks/     exploración de Landing con PySpark
 tests/         pruebas y fixtures de quarantine (entrega 2)
 config/        paths.env.example, copiar y ajustar local, sin secretos
 infra/         notas de runtime (más adelante)
 evidence/      perfiles generados, el checklist de entrega, logs
-scripts/       armado del HTML imprimible
+scripts/       armado del HTML imprimible, la muestra de datos y la corrida del notebook
 ```
 
 ## Cómo conseguir el dataset
@@ -56,6 +56,11 @@ data/landing/billing_monthly.csv
 data/landing/usage_events_stream/events_part_0000.jsonl   (120 archivos)
 ```
 
+Sin el dataset, `data/sample/` trae un recorte con el mismo layout: las 20 primeras organizaciones
+por `org_id` en cada CSV y sus eventos de las 10 primeras partes JSONL. Las líneas se copian sin
+cambios, así que conserva los problemas de calidad del original. Se regenera desde Landing con
+`python scripts/make_sample.py`.
+
 ## Cómo correr el notebook de exploración
 
 ```bash
@@ -69,6 +74,11 @@ PySpark necesita un JDK 17 o 21 en el PATH. Si el JDK por defecto es más nuevo,
 
 Correr todas las celdas reescribe los tres archivos de `evidence/`, y los números que están
 commiteados se pueden reproducir desde los datos de Landing.
+
+`bash scripts/run_exploration.sh` corre el notebook sin interfaz y deja el log de la corrida en
+`evidence/landing_exploration_run.log`, con las versiones usadas y el diff contra los perfiles
+commiteados. Para probar sobre la muestra, `DATA_LANDING` tiene que ser una ruta absoluta a
+`data/sample/`, y después hay que descartar los perfiles reescritos.
 
 Copiar `config/paths.env.example` si hace falta sobreescribir una ruta local. No commitear `.env` ni
 credenciales.

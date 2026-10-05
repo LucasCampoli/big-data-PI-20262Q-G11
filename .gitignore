@@ -183,6 +183,9 @@ cython_debug/
 # Generated delivery artifact: rebuild with scripts/build_entrega_html.py
 docs/entrega-1.html
 
+# Run logs kept as delivery evidence
+!evidence/*.log
+
 # Local secrets and generated lake outputs
 .env
 *.pem
