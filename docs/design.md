@@ -42,6 +42,7 @@ son las que fija el §7.4 de la consigna.
 | #   | Pregunta                                                                                | Dominio  |
 | --- | --------------------------------------------------------------------------------------- | -------- |
 | Q1  | ¿Cuánto gastó una organización por servicio, día por día, en un rango de fechas?        | FinOps   |
+| Q2  | ¿Qué servicios le costaron más a una organización en los últimos 14 días?               | FinOps   |
 | Q3  | ¿Cómo vienen los tickets críticos y los incumplimientos de SLA en 30 días?              | Soporte  |
 | Q4  | ¿Cuál es el revenue mensual de una organización en USD después de créditos e impuestos? | FinOps   |
 | Q5  | ¿Cuántos tokens de GenAI usó una organización por día, y a qué costo?                   | Producto |
@@ -202,7 +203,7 @@ que reprocesar un batch sobreescribe su propia fila en lugar de sumar una segund
 consulta suma las filas por batch del día que se le pide. La vista nunca dice estar completa, de modo que
 la late data no la rompe, y la corrida diaria la reemplaza por los números definitivos. La mecánica y
 el costo de usar el `batchId` en la clave están en el apéndice C. Esto es solo diseño: la entrega 2
-pide el mart diario y no un speed layer, y §8.5 lo deja para después.
+pide el mart diario y no un speed layer, así que queda para después de la entrega 2.
 
 ## 5. Data Lake
 
@@ -231,7 +232,7 @@ sobre `event_id`, servicios y regiones conformados, y chequeos referenciales con
 - Gold concilia cada partición contra Silver antes de publicarla, y además chequea que las claves de
 partición no sean nulas y que el conteo de filas coincida con el grano que el mart declara.
 - Quarantine es el control en sí, y lo que se mira es su tamaño, contra O3. Las dos bases están
-en cero hoy, y por eso §5.3 planifica fixtures para poder ejercitar el camino.
+en cero hoy, y por eso D10 planifica fixtures para poder ejercitar el camino.
 
 Las rutas siguen `datalake/<zona>/<entidad>/<partición>=<valor>/`, como en
 `datalake/silver/usage_events/event_date=2025-08-01/`. Las columnas técnicas son lo que permite
@@ -613,7 +614,7 @@ Los riesgos de los datos están en §3.1. Estos son los supuestos sobre los que 
 | El setup de AstraDB traba el serving tarde en la entrega 2                            | Fallan dos ítems del checklist, el keyspace y las consultas              | Hacer el spike en la semana 1 contra una tabla vacía                                 |
 | El estado del checkpoint queda inservible después de un cambio de esquema o de código | El job no arranca y la demo se cuelga                                    | Documentar un reset, y mantener Bronze reconstruible así resetear no cuesta nada     |
 | Cinco personas editando un mismo documento de diseño                                  | Conflictos de merge y ediciones perdidas                                 | Un dueño por sección, ramas cortas, sin ediciones en paralelo sobre la misma sección |
-| El speed layer se construye antes que el mart obligatorio                             | La entrega 2 se queda sin `org_daily_usage_by_service` por algo opcional | §8.5 deja la vista provisoria para después de la entrega 2                           |
+| El speed layer se construye antes que el mart obligatorio                             | La entrega 2 se queda sin `org_daily_usage_by_service` por algo opcional | La vista provisoria queda para después de la entrega 2                               |
 | Experiencia desigual con Spark en el equipo                                           | El trabajo se concentra en una o dos personas                            | Hacer de a dos el primer job de cada área, y usar el notebook como referencia común  |
 | El feedback de la entrega 1 llega tarde y es sustancial                               | El rework compite con la implementación nueva                            | Las correcciones son el primer workstream de §8.4, no el último                      |
 
@@ -668,4 +669,7 @@ Estimación contra el checklist de la entrega 2, en horas-persona.
 134 horas en las seis semanas hasta el 2026-11-16, entre cinco personas, son unas cuatro horas y media  
 por semana cada uno. El workstream 7 es el que tiene la única dependencia externa, y por eso el spike  
 de AstraDB va en la semana 1.
+
+Recursos: Colab o Spark local para los jobs, el free tier de AstraDB o un contenedor de Cassandra
+para serving, y GitHub para el repo y la entrega.
 

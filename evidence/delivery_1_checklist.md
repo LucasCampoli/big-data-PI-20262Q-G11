@@ -29,7 +29,7 @@ Verificado el 2026-10-05 contra la consigna. La puerta de entrada a todo lo que 
 | 3 | Zonas, formatos y particiones coherentes con los datos provistos | §5, con la elección de partición argumentada sobre conteos de archivos medidos en §5.1 | Hecho |
 | 4 | El flujo MapReduce muestra cómo se resolvería el batch | §7 calcula `org_daily_usage_by_service`, el mart obligatorio | Hecho |
 | 5 | Supuestos y riesgos realistas, con mitigaciones | §8.1 diez supuestos con su consecuencia, §8.2 seis riesgos de proyecto, §3.1 cinco riesgos de datos | Hecho |
-| 6 | El repo y la documentación permiten seguir implementando | README con quickstart y convenciones, `DECISIONS.md` con 12 registros, backlog en §8.5 | Hecho |
+| 6 | El repo y la documentación permiten seguir implementando | README con quickstart y convenciones, `DECISIONS.md` con 12 registros, esfuerzo por workstream en §8.4 | Hecho |
 
 ## Puntos abiertos
 
@@ -41,5 +41,5 @@ Nada del alcance obligatorio quedó afuera. Hay dos cosas sin cerrar, a propósi
 | D12, el método de anomalías | Necesita la distribución de la serie diaria agregada, no de los incrementos crudos. Se decide junto con `cost_anomaly_mart` |
 
 El conjunto de reglas de calidad todavía no tiene código atrás, y las muestras de quarantine que pide
-la entrega 2 salen de los fixtures planificados en §5.3. Eso es alcance de la entrega 2 y no un hueco
+la entrega 2 salen de los fixtures planificados en D10. Eso es alcance de la entrega 2 y no un hueco
 de esta.
