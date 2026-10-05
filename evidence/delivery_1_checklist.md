@@ -9,7 +9,7 @@ Verificado el 2026-10-03 contra la consigna. La puerta de entrada a todo lo que 
 | :-- | :--- | :--- | :--- |
 | 1 | Documento de diseño disponible en el canal de entrega | `docs/design.md`, imprimible desde `docs/entrega-1.html` | Listo, la subida en sí es manual |
 | 2 | Repositorio accesible y versionado | este repo, tag `entrega-1` | Taggeado local, falta el push por permisos |
-| 3 | Interpretación del caso y objetivos medibles | §1, con O1 a O9 en §1.3 | Hecho |
+| 3 | Interpretación del caso y objetivos medibles | §1, con O1 a O3 en §1.3 | Hecho |
 | 4 | Análisis 5V | §2, con la proyección en el apéndice A | Hecho |
 | 5 | Inventario y perfil de fuentes | §3, medido en `landing_profile.md` | Hecho |
 | 6 | Arquitectura v1 y patrón justificado | §6.1 y `architecture_v1.svg`, el patrón en §4 | Hecho |
@@ -24,7 +24,7 @@ Verificado el 2026-10-03 contra la consigna. La puerta de entrada a todo lo que 
 
 | # | Criterio | Dónde está | Estado |
 | :-- | :--- | :--- | :--- |
-| 1 | Problema, usuarios y criterios de éxito sin ambigüedad | §1.1 usuarios, §1.2 preguntas, §1.3 nueve objetivos numerados con umbral | Hecho |
+| 1 | Problema, usuarios y criterios de éxito sin ambigüedad | §1.1 usuarios, §1.2 preguntas, §1.3 tres objetivos numerados con umbral | Hecho |
 | 2 | La arquitectura responde a los requisitos y distingue batch de streaming | §4.3 qué corre dónde, §6.2 y §6.3 como flujos separados, §6.4 mapea cada requisito | Hecho |
 | 3 | Zonas, formatos y particiones coherentes con los datos provistos | §5, con la elección de partición argumentada sobre conteos de archivos medidos en §5.1 | Hecho |
 | 4 | El flujo MapReduce muestra cómo se resolvería el batch | §7 calcula `org_daily_usage_by_service`, el mart obligatorio | Hecho |

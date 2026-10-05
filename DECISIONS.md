@@ -78,7 +78,7 @@ Consecuencias. Dos caminos de ejecución para operar, y costo y requests se calc
 que pueden no coincidir entre el último micro-batch y la siguiente corrida de batch. Solo esas dos
 medidas están duplicadas, el número provisorio se sirve marcado como provisorio, y en D+1 gana el
 valor del batch. Mantener las dos definiciones alineadas es trabajo manual, y por eso el speed layer
-se limita a dos medidas. Los marts finales están tan frescos como la agenda del batch, O2. Para la
+se limita a dos medidas. Los marts finales están tan frescos como la agenda del batch, O1. Para la
 entrega 1 la vista provisoria es solo diseño y queda en el backlog como trabajo posterior a la
 entrega 2, que pide el mart diario.
 
@@ -141,7 +141,7 @@ mart de FinOps en torno al 5%. Imputar en silencio hace que una reparación no s
 de origen. Tratar un `value` nulo como cero sesga todos los promedios para abajo e inventa una
 medición que nunca se tomó. Descartar esas filas tira el 2,01% del costo real.
 
-Consecuencias. La base de Quarantine para eventos es 0 de 43.200, que es contra lo que está fijado O5.
+Consecuencias. La base de Quarantine para eventos es 0 de 43.200, que es contra lo que está fijado O3.
 La imputación vale mientras `metric` determine `unit`, y el notebook lo verifica antes de
 confiar en eso. Los agregados de uso y de costo pueden tener denominadores distintos para el mismo
 día de una organización, por lo que una métrica de uso tiene que ir con su conteo de filas.
@@ -210,7 +210,7 @@ ser una copia fiel, y uno de 60 días los conservaría pero mantendría 60 días
 trivial con las 43.200 claves de hoy, y 2,6 billones (2,6 × 10¹²) en la proyección del §2.1.
 
 Consecuencias. Landing no se vence nunca, lo que cuesta almacenamiento, y a cambio Bronze se puede
-guardar solo 90 días. Volver a correr cualquier fecha es seguro, O9. La sobreescritura de particiones
+guardar solo 90 días. Volver a correr cualquier fecha es seguro. La sobreescritura de particiones
 no es atómica en object storage común, y un lector puede ver por un momento una partición a
 medio escribir, algo aceptable con una cadencia diaria y la razón por la que D4 menciona Delta e
 Iceberg como lo que habría que adoptar si deja de serlo.
@@ -234,7 +234,7 @@ Consecuencias. Forzar la tasa mueve el revenue total apenas un 0,07%, de 164.184
 porque las tasas se reparten de forma simétrica alrededor de 1,0 y se cancelan entre las 160 facturas.
 Por factura el error va de -14,5% a +11,8%, y Q4 sirve una fila por organización y mes. Una
 conciliación sobre el total habría pasado mientras dos tercios de las filas servidas estaban mal, y
-por eso O9 se chequea por organización y día y no sobre el total. La corrección queda visible en
+por eso la conciliación se chequea por organización y día y no sobre el total. La corrección queda visible en
 `fx_overridden`.
 
 ## D10. Las muestras de quarantine salen de fixtures en la entrega 2

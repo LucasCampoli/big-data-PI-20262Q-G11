@@ -23,53 +23,47 @@ tiene que estar más cerca del tiempo real.
 
 ### 1.1 Usuarios
 
-| Quién | Qué decide | Qué necesita de nosotros |
-| :--- | :--- | :--- |
-| FinOps | A dónde se va el gasto, qué facturar, qué cargos investigar. | Costo y consumo diarios por organización y servicio, flags de anomalía, revenue en USD después de créditos e impuestos. |
-| Soporte | Dónde poner gente, qué cuentas están en riesgo. | Volumen de tickets por severidad, tasa de incumplimiento de SLA y CSAT por organización y fecha. |
-| Producto y Usage | En qué servicios invertir, cómo crece la adopción de GenAI. | Requests y métricas operativas por servicio, tokens de GenAI y carbono cuando existen. |
+
+| Quién            | Qué decide                                                   | Qué necesita de nosotros                                                                                                |
+| ---------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| FinOps           | A dónde se va el gasto, qué facturar, qué cargos investigar. | Costo y consumo diarios por organización y servicio, flags de anomalía, revenue en USD después de créditos e impuestos. |
+| Soporte          | Dónde poner gente, qué cuentas están en riesgo.              | Volumen de tickets por severidad, tasa de incumplimiento de SLA y CSAT por organización y fecha.                        |
+| Producto y Usage | En qué servicios invertir, cómo crece la adopción de GenAI.  | Requests y métricas operativas por servicio, tokens de GenAI y carbono cuando existen.                                  |
+
+
+
 
 ### 1.2 Preguntas y las consultas que las responden
 
 Cada pregunta tiene que salir de Cassandra con la lectura de una sola partición. Las cinco consultas
 son las que fija el §7.4 de la consigna.
 
-| # | Pregunta | Dominio | Mart de Gold | Partition key, clustering |
-| :-- | :--- | :--- | :--- | :--- |
-| Q1 | ¿Cuánto gastó una organización por servicio, día por día, en un rango de fechas? | FinOps | `org_daily_usage_by_service` | `(org_id)`, `usage_date, service` |
-| Q2 | ¿Qué servicios le costaron más a una organización en los últimos 14 días? | FinOps | el mismo mart, se escanea el rango y se ordena | `(org_id)`, `usage_date, service` |
-| Q3 | ¿Cómo vienen los tickets críticos y los incumplimientos de SLA en 30 días? | Soporte | `tickets_by_org_date` | `(org_id)`, `ticket_date, severity` |
-| Q4 | ¿Cuál es el revenue mensual de una organización en USD después de créditos e impuestos? | FinOps | `revenue_by_org_month` | `(org_id)`, `month` |
-| Q5 | ¿Cuántos tokens de GenAI usó una organización por día, y a qué costo? | Producto | `genai_tokens_by_org_date` | `(org_id)`, `usage_date` |
-| Q6 | ¿Qué días se ven raros? Es una pregunta nuestra de FinOps, fuera de las cinco. | FinOps | `cost_anomaly_mart` | `(org_id)`, `usage_date, service` |
 
-Q1 y Q2 comparten un mart: las dos son un escaneo por rango de fechas dentro de la partición de una
-organización, y una segunda tabla sería una copia sin ninguna ganancia. Q2 ordena el resultado, como
-máximo 14 días por 6 servicios.
+| #   | Pregunta                                                                                | Dominio  |
+| --- | --------------------------------------------------------------------------------------- | -------- |
+| Q1  | ¿Cuánto gastó una organización por servicio, día por día, en un rango de fechas?        | FinOps   |
+| Q3  | ¿Cómo vienen los tickets críticos y los incumplimientos de SLA en 30 días?              | Soporte  |
+| Q4  | ¿Cuál es el revenue mensual de una organización en USD después de créditos e impuestos? | FinOps   |
+| Q5  | ¿Cuántos tokens de GenAI usó una organización por día, y a qué costo?                   | Producto |
+| Q6  | ¿Qué días se ven raros? Es una pregunta nuestra de FinOps, fuera de las cinco.          | FinOps   |
 
-La consigna pide Q1 y Q2 por organización de forma explícita. Para Q3, Q4 y Q5 no lo dice, y acá las
-pusimos por organización igual. Es un supuesto, no un dato (§8.1): si alguna de las tres se pide
-global, su partition key no puede ser `(org_id)` y necesita una tabla aparte, que es uno de los
-puntos abiertos de D11.
+
+
 
 ### 1.3 Objetivos
 
 Las bases de calidad son lo que miden los datos hoy, de modo que si una carga posterior empeora se
 nota.
 
-| # | Objetivo | Umbral | Base de hoy |
-| :-- | :--- | :--- | :--- |
-| O1 | Un evento se puede consultar en Bronze poco después de que aterriza su archivo | 5 min, p95 | n/a |
-| O2 | Los marts diarios del día D se publican temprano en D+1 | antes de las 06:00 UTC | n/a |
-| O3 | Las cinco consultas responden lo bastante rápido para un tablero | p95 bajo 1 s | n/a |
-| O4 | `event_id` presente y único en Silver | 100%, sin duplicados | 0 nulos, 0 duplicados |
-| O5 | Quarantine sigue siendo una excepción, contada en filas y en costo | 1% de los eventos, 1% del costo | 0% y 0% |
-| O6 | Toda reparación queda marcada, nunca silenciosa | 100% marcadas | 2.075 `unit_imputed`, 160 `fx_overridden` |
-| O7 | Un `value` faltante se queda en null, nunca pasa a cero | las sumas de uso lo saltean, el costo se cuenta igual | 877 eventos, 2,01% del costo |
-| O8 | Toda fila se puede rastrear hasta su archivo de origen, y joinea | 100% con `ingest_ts` y `source_file` | 80 de 80 organizaciones, 400 de 400 recursos resuelven |
-| O9 | Gold concilia con Silver, y las re-ejecuciones no duplican | 0,01 USD por organización y día, conteos estables | n/a |
 
-O5 cuenta costo además de filas porque los dos pueden apuntar para lados distintos. Rechazar todo
+| #   | Objetivo                                                           | Umbral                          | Base de hoy           |
+| --- | ------------------------------------------------------------------ | ------------------------------- | --------------------- |
+| O1  | Los marts diarios del día D se publican temprano en D+1            | antes de las 06:00 UTC          | n/a                   |
+| O2  | `event_id` presente y único en Silver                              | 100%, sin duplicados            | 0 nulos, 0 duplicados |
+| O3  | Quarantine sigue siendo una excepción, contada en filas y en costo | 1% de los eventos, 1% del costo | 0% y 0%               |
+
+
+O3 cuenta costo además de filas porque los dos pueden apuntar para lados distintos. Rechazar todo
 evento con `unit` faltante tiraría menos del 5% de los eventos, y más o menos la misma proporción de
 todo el costo, lo que subestimaría cada mart de FinOps. En §5.2 están las reglas que los conservan.
 
@@ -79,13 +73,17 @@ Velocidad, variedad y veracidad dominan el caso y son alrededor de qué está co
 arquitectura. El volumen es la más débil de las cinco en los 13 MB que nos dieron, y lo
 argumentamos por proyección.
 
-| V | Peso | Evidencia medida | Qué obliga |
-| :--- | :--- | :--- | :--- |
-| Velocidad | Dominante | El uso llega como 120 partes JSONL pensadas para leerse como micro-batches. Reproducidas en orden, un watermark de 1 día trata al 97,5% de los eventos como tardíos, el de 7 días al 87,6% y el de 30 días al 49,6%. | Structured Streaming para la ingesta, sin agregación por ventanas. Los marts diarios se recalculan en batch. |
-| Variedad | Dominante | Dos formatos, 6 maestros CSV más la facturación y los eventos JSONL. Dos layouts de evento, 11 campos en v1 y 12 o 13 en v2. `value` llega como número JSON 41.014 veces y como string entre comillas 1.309 veces. `unit` falta en 2.075 eventos. La facturación viene en 3 monedas. | Un esquema explícito que cubre las dos versiones, `value` leído como string y casteado en Silver, servicios y regiones conformados, moneda convertida por factura. |
-| Veracidad | Dominante | 211 eventos por debajo de -0,01 USD. El p99 del costo es 16,69 contra un máximo de 317,43. `nps_score` va de -38 a 101. 877 eventos con `value` nulo, 240 tickets sin `resolved_at`, 462 de 800 usuarios con timestamps contradictorios. | Reglas de calidad que primero imputan, con una zona Quarantine, anomalías por una medida relativa y no por un umbral fijo, NPS marcado en lugar de promediado. |
-| Volumen | Secundaria | 13 MB: 43.200 eventos de 299 B en 60 días, unos 720 por día. | Particionar por una sola columna de fecha, Parquet con Snappy, tamaños de archivo bajo control. |
-| Valor | Lo que compra | Un solo pipeline alimenta 5 consultas obligatorias de 3 dominios desde los mismos datos conformados. | Silver compartida, marts por dominio en Gold, modelado query-first en Cassandra. |
+
+| V         | Peso          | Evidencia medida                                                                                                                                                                                                                                                                     | Qué obliga                                                                                                                                                         |
+| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Velocidad | Dominante     | El uso llega como 120 partes JSONL pensadas para leerse como micro-batches. Reproducidas en orden, un watermark de 1 día trata al 97,5% de los eventos como tardíos, el de 7 días al 87,6% y el de 30 días al 49,6%.                                                                 | Structured Streaming para la ingesta, sin agregación por ventanas. Los marts diarios se recalculan en batch.                                                       |
+| Variedad  | Dominante     | Dos formatos, 6 maestros CSV más la facturación y los eventos JSONL. Dos layouts de evento, 11 campos en v1 y 12 o 13 en v2. `value` llega como número JSON 41.014 veces y como string entre comillas 1.309 veces. `unit` falta en 2.075 eventos. La facturación viene en 3 monedas. | Un esquema explícito que cubre las dos versiones, `value` leído como string y casteado en Silver, servicios y regiones conformados, moneda convertida por factura. |
+| Veracidad | Dominante     | 211 eventos por debajo de -0,01 USD. El p99 del costo es 16,69 contra un máximo de 317,43. `nps_score` va de -38 a 101. 877 eventos con `value` nulo, 240 tickets sin `resolved_at`, 462 de 800 usuarios con timestamps contradictorios.                                             | Reglas de calidad que primero imputan, con una zona Quarantine, anomalías por una medida relativa y no por un umbral fijo, NPS marcado en lugar de promediado.     |
+| Volumen   | Secundaria    | 13 MB: 43.200 eventos de 299 B en 60 días, unos 720 por día.                                                                                                                                                                                                                         | Particionar por una sola columna de fecha, Parquet con Snappy, tamaños de archivo bajo control.                                                                    |
+| Valor     | Lo que compra | Un solo pipeline alimenta 5 consultas obligatorias de 3 dominios desde los mismos datos conformados.                                                                                                                                                                                 | Silver compartida, marts por dominio en Gold, modelado query-first en Cassandra.                                                                                   |
+
+
+
 
 ### 2.1 El volumen por proyección
 
@@ -94,9 +92,7 @@ para lo real. Tomando 50.000 organizaciones, 200 recursos medidos por cada una y
 minuto, el mismo pipeline movería unos 43.200 millones de eventos por día (43,2 × 10⁹), alrededor de 500.000 por
 segundo y 0,6 PB de Parquet al año. La aritmética y los cinco supuestos están en el apéndice A.
 
-A esa escala un lake particionado sobre object storage, un motor distribuido y un wide-column store
-para serving son la elección obvia. Con 13 MB ninguno lo es, y por eso el argumento lo llevan las
-otras tres V.
+A esa escala un lake particionado sobre object storage, un motor distribuido y un wide-column store para serving son necesarios. 
 
 ## 3. Fuentes
 
@@ -104,29 +100,35 @@ Los archivos están en `data/landing/` y no los modificamos. `org_id` aparece en
 la clave de join, y el nombre del archivo es lo que nos da trazabilidad una vez que la fila está en
 Bronze.
 
-| Fuente | Grano | Cada cuánto | Notas |
-| :--- | :--- | :--- | :--- |
-| `customers_orgs.csv` | Una organización, `org_id` | Snapshot | Industria, región, plan, NPS. Algunos NPS vacíos o fuera de rango. |
-| `users.csv` | Un usuario, `user_id` | Snapshot | Rol y actividad. `last_login` muchas veces vacío, y los timestamps se contradicen entre sí. |
-| `resources.csv` | Un recurso, `resource_id` | Snapshot | Servicio, región, estado. `tags_json` a veces vacío, y viene entre comillas, por lo que necesita escape al leer. |
-| `support_tickets.csv` | Un ticket, `ticket_id` | Cuando se abren tickets | Severidad, SLA, CSAT. Los tickets abiertos no tienen `resolved_at`, y CSAT falta seguido. |
-| `marketing_touches.csv` | Un contacto, `touch_id` | Cuando corren campañas | Canal, clic y conversión. Sin nulos. |
-| `nps_surveys.csv` | Una respuesta por organización y fecha | En el tiempo | 92 respuestas repartidas en 60 organizaciones, por lo que no es una fila por organización. Es aparte de la columna de NPS del archivo de organizaciones. |
-| `billing_monthly.csv` | Una factura, `invoice_id` | Mensual, acá tres meses | Créditos, impuestos, moneda. Algunos créditos vacíos, 13 subtotales negativos, tres monedas. |
-| `usage_events_stream/*.jsonl` | Un evento, `event_id` | Micro-batches | `value` a veces nulo o texto. Los costos pueden ser negativos. `schema_version=2` agrega `carbon_kg` y, para genai, `genai_tokens`. |
+
+| Fuente                        | Grano                                  | Cada cuánto             | Notas                                                                                                                                                    |
+| ----------------------------- | -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `customers_orgs.csv`          | Una organización, `org_id`             | Snapshot                | Industria, región, plan, NPS. Algunos NPS vacíos o fuera de rango.                                                                                       |
+| `users.csv`                   | Un usuario, `user_id`                  | Snapshot                | Rol y actividad. `last_login` muchas veces vacío, y los timestamps se contradicen entre sí.                                                              |
+| `resources.csv`               | Un recurso, `resource_id`              | Snapshot                | Servicio, región, estado. `tags_json` a veces vacío, y viene entre comillas, por lo que necesita escape al leer.                                         |
+| `support_tickets.csv`         | Un ticket, `ticket_id`                 | Cuando se abren tickets | Severidad, SLA, CSAT. Los tickets abiertos no tienen `resolved_at`, y CSAT falta seguido.                                                                |
+| `marketing_touches.csv`       | Un contacto, `touch_id`                | Cuando corren campañas  | Canal, clic y conversión. Sin nulos.                                                                                                                     |
+| `nps_surveys.csv`             | Una respuesta por organización y fecha | En el tiempo            | 92 respuestas repartidas en 60 organizaciones, por lo que no es una fila por organización. Es aparte de la columna de NPS del archivo de organizaciones. |
+| `billing_monthly.csv`         | Una factura, `invoice_id`              | Mensual, acá tres meses | Créditos, impuestos, moneda. Algunos créditos vacíos, 13 subtotales negativos, tres monedas.                                                             |
+| `usage_events_stream/*.jsonl` | Un evento, `event_id`                  | Micro-batches           | `value` a veces nulo o texto. Los costos pueden ser negativos. `schema_version=2` agrega `carbon_kg` y, para genai, `genai_tokens`.                      |
+
 
 Los conteos de filas, las proporciones de nulos y los chequeos de claves duplicadas por fuente están
 en `evidence/landing_profile.md`.
 
 ### 3.1 Riesgos en los datos
 
-| Riesgo | Por qué importa | Mitigación |
-| :--- | :--- | :--- |
-| Cambio de esquema | Los eventos mezclan v1 y v2. Un esquema estricto por versión fallaría o descartaría las filas más viejas. | El esquema de §3.2. |
-| Tipos ambiguos | `value` llega como número, como texto o como nulo. Un cast duro convierte las filas malas en nulos sin avisar, y con el modo ANSI de Spark 4 directamente corta el job. | Leer `value` como string en Bronze, castear en Silver con `try_cast`, mandar la falla a Quarantine. |
-| Importes que no cierran | Los costos y los subtotales pueden ser negativos, y la facturación no es toda en USD. Cada factura en USD trae una tasa distinta de 1,0, que deforma el revenue por organización hasta un 12% mientras casi no mueve el total. | §5.2, y convertir con la tasa propia de cada factura. |
-| Nulos en hechos que necesitamos | Los tickets abiertos no tienen tiempo de resolución, CSAT y NPS faltan seguido, 2.075 eventos no tienen `unit`. Los promedios que lo ignoran se ven mejor de lo que son. | Imputar solo lo que otro campo ya determina, y si no, dejar el nulo. |
-| Timestamps contradictorios | Más de la mitad de `users` tiene un `last_login` o un `created_at` que no se puede reconciliar con el resto de la fila. | Marcar las dos cosas, y dejar los timestamps de `users` como de baja confianza. |
+
+| Riesgo                          | Por qué importa                                                                                                                                                                                                                | Mitigación                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Cambio de esquema               | Los eventos mezclan v1 y v2. Un esquema estricto por versión fallaría o descartaría las filas más viejas.                                                                                                                      | El esquema de §3.2.                                                                                 |
+| Tipos ambiguos                  | `value` llega como número, como texto o como nulo. Un cast duro convierte las filas malas en nulos sin avisar, y con el modo ANSI de Spark 4 directamente corta el job.                                                        | Leer `value` como string en Bronze, castear en Silver con `try_cast`, mandar la falla a Quarantine. |
+| Importes que no cierran         | Los costos y los subtotales pueden ser negativos, y la facturación no es toda en USD. Cada factura en USD trae una tasa distinta de 1,0, que deforma el revenue por organización hasta un 12% mientras casi no mueve el total. | §5.2, y convertir con la tasa propia de cada factura.                                               |
+| Nulos en hechos que necesitamos | Los tickets abiertos no tienen tiempo de resolución, CSAT y NPS faltan seguido, 2.075 eventos no tienen `unit`. Los promedios que lo ignoran se ven mejor de lo que son.                                                       | Imputar solo lo que otro campo ya determina, y si no, dejar el nulo.                                |
+| Timestamps contradictorios      | Más de la mitad de `users` tiene un `last_login` o un `created_at` que no se puede reconciliar con el resto de la fila.                                                                                                        | Marcar las dos cosas, y dejar los timestamps de `users` como de baja confianza.                     |
+
+
+
 
 ### 3.2 Esquema de los eventos
 
@@ -139,6 +141,8 @@ apéndice B.
 
 ## 4. Patrón arquitectónico
 
+
+
 ### 4.1 Híbrido estilo Lambda
 
 Dos capas sobre los mismos eventos. Structured Streaming hace append a Bronze y mantiene una vista
@@ -150,11 +154,13 @@ Lo decidió la medición de late data. Cada uno de los 120 archivos abarca 59 de
 dataset, de manera que los archivos no son cortes ordenados por tiempo. Reproducidos en orden de nombre
 como micro-batches:
 
+
 | Watermark | Eventos tardíos | Proporción |
-| :--- | ---: | ---: |
-| 1 día | 42.118 | 97,5% |
-| 7 días | 37.831 | 87,6% |
-| 30 días | 21.421 | 49,6% |
+| --------- | --------------- | ---------- |
+| 1 día     | 42.118          | 97,5%      |
+| 7 días    | 37.831          | 87,6%      |
+| 30 días   | 21.421          | 49,6%      |
+
 
 Una agregación con ventanas en streaming cierra la ventana cuando el watermark la pasa, y sobre estos
 datos eso tiraría casi toda la entrada. Al batch no le importa el orden de llegada: un evento
@@ -162,11 +168,13 @@ tardío cae en la partición del día al que pertenece y la corrida siguiente co
 
 ### 4.2 Alternativas
 
-| Opción | Qué implicaría | Por qué la descartamos |
-| :--- | :--- | :--- |
-| Batch puro | Un job agendado lee todo el directorio JSONL y reconstruye todo. | Incumple el requisito de near real-time y la capacidad obligatoria de Structured Streaming. Las métricas de uso quedarían con horas de atraso. |
-| Kappa puro | Un solo job de streaming como único camino, y cada mart como agregación con estado. | La mitad de las fuentes no pertenece a un stream: los maestros son snapshots y la facturación es mensual. Y el Gold diario en streaming solo tiene opciones malas, porque un watermark de 1 día descarta casi todos los eventos, y el que no los descartaría es de unos 60 días de estado de ventanas. |
-| Híbrido estilo Lambda, elegido | Streaming para la ingesta y la vista provisoria, batch para todos los marts y los maestros. | Cumple los dos requisitos de velocidad, y el job de streaming queda libre de ventanas. |
+
+| Opción                         | Qué implicaría                                                                              | Por qué la descartamos                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Batch puro                     | Un job agendado lee todo el directorio JSONL y reconstruye todo.                            | Incumple el requisito de near real-time y la capacidad obligatoria de Structured Streaming. Las métricas de uso quedarían con horas de atraso.                                                                                                                                                         |
+| Kappa puro                     | Un solo job de streaming como único camino, y cada mart como agregación con estado.         | La mitad de las fuentes no pertenece a un stream: los maestros son snapshots y la facturación es mensual. Y el Gold diario en streaming solo tiene opciones malas, porque un watermark de 1 día descarta casi todos los eventos, y el que no los descartaría es de unos 60 días de estado de ventanas. |
+| Híbrido estilo Lambda, elegido | Streaming para la ingesta y la vista provisoria, batch para todos los marts y los maestros. | Cumple los dos requisitos de velocidad, y el job de streaming queda libre de ventanas.                                                                                                                                                                                                                 |
+
 
 La objeción de siempre a Lambda es mantener la misma lógica dos veces, y acá aplica a costo y
 requests, que se suman en las dos capas y pueden no coincidir. Solo esas dos están duplicadas, el
@@ -175,12 +183,16 @@ dos definiciones sigue siendo trabajo manual, y por eso el speed layer no cubre 
 
 ### 4.3 Qué corre dónde
 
-| Camino | Fuentes | Trigger | Escribe | Con estado |
-| :--- | :--- | :--- | :--- | :--- |
-| Streaming, speed layer | `usage_events_stream/*.jsonl` | micro-batch, 1 min | eventos en Bronze, vista intradía provisoria | Sin ventanas. Solo el conjunto de claves de dedupe, acotado por un watermark sobre `ingest_ts` (§6.3) |
-| Batch diario | eventos y dimensiones de Silver | diario, después de las 00:00 UTC | marts diarios de Gold para Q1, Q2, Q3, Q5, Q6 | n/a |
-| Batch de snapshot | los 6 maestros CSV | diario | dimensiones en Bronze y Silver | n/a |
-| Batch mensual | `billing_monthly.csv` | mensual | facturación en Bronze y `revenue_by_org_month` en Gold, para Q4 | n/a |
+
+| Camino                 | Fuentes                         | Trigger                          | Escribe                                                         | Con estado                                                                                            |
+| ---------------------- | ------------------------------- | -------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Streaming, speed layer | `usage_events_stream/*.jsonl`   | micro-batch, 1 min               | eventos en Bronze, vista intradía provisoria                    | Sin ventanas. Solo el conjunto de claves de dedupe, acotado por un watermark sobre `ingest_ts` (§6.3) |
+| Batch diario           | eventos y dimensiones de Silver | diario, después de las 00:00 UTC | marts diarios de Gold para Q1, Q2, Q3, Q5, Q6                   | n/a                                                                                                   |
+| Batch de snapshot      | los 6 maestros CSV              | diario                           | dimensiones en Bronze y Silver                                  | n/a                                                                                                   |
+| Batch mensual          | `billing_monthly.csv`           | mensual                          | facturación en Bronze y `revenue_by_org_month` en Gold, para Q4 | n/a                                                                                                   |
+
+
+
 
 ### 4.4 La vista intradía provisoria
 
@@ -197,38 +209,44 @@ pide el mart diario y no un speed layer, y §8.5 lo deja para después.
 Cinco zonas. Una zona es un contrato sobre quién puede escribir, quién puede leer y qué tiene que ser
 cierto antes de que los datos lleguen, no una carpeta.
 
-| Zona | Escribe y lee | Formato y partición | Retención | Puerta de entrada |
-| :--- | :--- | :--- | :--- | :--- |
-| Landing | Escriben los sistemas de origen. Leen los jobs de ingesta y la exploración de solo lectura. Ningún mart ni analista la lee | CSV y JSONL como llegan, un directorio por fuente, sin particionar | Histórico completo, lo único desde donde podemos reprocesar | El archivo está completo y su nombre no figura ya en el registro de ingestados |
-| Bronze | Streaming escribe los eventos, batch escribe maestros y facturación, solo append. Leen los jobs de Silver | Parquet, Snappy. Eventos por `ingest_date`, facturación por `month`, maestros sin particionar | 90 días móviles sobre `ingest_date` | La fila parseó con el esquema declarado. Acá no hay reglas de negocio |
-| Silver | Solo jobs batch, sobreescribiendo la partición. Leen los jobs de Gold y los notebooks | Parquet, Snappy, por `event_date`. Dimensiones sin particionar | Histórico completo, así Gold siempre se puede reconstruir | La fila pasa todas las reglas de rechazo de §5.2. Las reparaciones se marcan, no bloquean |
-| Gold | Escriben los jobs de agregación y después el cargador a Cassandra. Leen las cinco consultas y las herramientas de BI | Parquet, Snappy, y después Cassandra. Por `usage_date`, o `month` para revenue | 13 meses móviles | La partición concilia con Silver dentro de 0,01 USD por organización y día |
-| Quarantine | Bronze escribe las fallas de parseo, Silver las violaciones de reglas. La leen los ingenieros como cola de revisión, ningún mart | Parquet, Snappy, por `quarantine_date`, con `rule_name` como columna | 180 días | Nada se promueve. Una fila vuelve a entrar solo si se arregla la regla o la fuente y se reprocesa desde Landing |
+
+| Zona       | Escribe y lee                                                                                                                    | Formato y partición                                                                           | Retención                                                   | Puerta de entrada                                                                                               |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Landing    | Escriben los sistemas de origen. Leen los jobs de ingesta y la exploración de solo lectura. Ningún mart ni analista la lee       | CSV y JSONL como llegan, un directorio por fuente, sin particionar                            | Histórico completo, lo único desde donde podemos reprocesar | El archivo está completo y su nombre no figura ya en el registro de ingestados                                  |
+| Bronze     | Streaming escribe los eventos, batch escribe maestros y facturación, solo append. Leen los jobs de Silver                        | Parquet, Snappy. Eventos por `ingest_date`, facturación por `month`, maestros sin particionar | 90 días móviles sobre `ingest_date`                         | La fila parseó con el esquema declarado. Acá no hay reglas de negocio                                           |
+| Silver     | Solo jobs batch, sobreescribiendo la partición. Leen los jobs de Gold y los notebooks                                            | Parquet, Snappy, por `event_date`. Dimensiones sin particionar                                | Histórico completo, así Gold siempre se puede reconstruir   | La fila pasa todas las reglas de rechazo de §5.2. Las reparaciones se marcan, no bloquean                       |
+| Gold       | Escriben los jobs de agregación y después el cargador a Cassandra. Leen las cinco consultas y las herramientas de BI             | Parquet, Snappy, y después Cassandra. Por `usage_date`, o `month` para revenue                | 13 meses móviles                                            | La partición concilia con Silver dentro de 0,01 USD por organización y día                                      |
+| Quarantine | Bronze escribe las fallas de parseo, Silver las violaciones de reglas. La leen los ingenieros como cola de revisión, ningún mart | Parquet, Snappy, por `quarantine_date`, con `rule_name` como columna                          | 180 días                                                    | Nada se promueve. Una fila vuelve a entrar solo si se arregla la regla o la fuente y se reprocesa desde Landing |
+
 
 Lo que la tabla comprime son los controles, que es lo que más cambia de zona en zona.
 
 - Landing no aplica ninguno. La calidad ahí se observa y se hace cumplir después, y hasta el notebook
-  de exploración la lee sin escribirla.
+de exploración la lee sin escribirla.
 - Bronze chequea una sola cosa, que la fila parsee con el esquema de §3.2, y manda lo que no a
-  Quarantine con su texto crudo. El grano queda como lo tenía la fuente, sin filtrar y sin deduplicar.
+Quarantine con su texto crudo. El grano queda como lo tenía la fuente, sin filtrar y sin deduplicar.
 - Silver corre todo el conjunto de reglas de §5.2: `try_cast` en los números, `unit` imputado desde
-  `metric` y marcado, un `value` nulo que se deja nulo, costos negativos marcados, `dropDuplicates`
-  sobre `event_id`, servicios y regiones conformados, y chequeos referenciales contra las dimensiones.
+`metric` y marcado, un `value` nulo que se deja nulo, costos negativos marcados, `dropDuplicates`
+sobre `event_id`, servicios y regiones conformados, y chequeos referenciales contra las dimensiones.
 - Gold concilia cada partición contra Silver antes de publicarla, y además chequea que las claves de
-  partición no sean nulas y que el conteo de filas coincida con el grano que el mart declara.
-- Quarantine es el control en sí, y lo que se mira es su tamaño, contra O5. Las dos bases están
-  en cero hoy, y por eso §5.3 planifica fixtures para poder ejercitar el camino.
+partición no sean nulas y que el conteo de filas coincida con el grano que el mart declara.
+- Quarantine es el control en sí, y lo que se mira es su tamaño, contra O3. Las dos bases están
+en cero hoy, y por eso §5.3 planifica fixtures para poder ejercitar el camino.
 
 Las rutas siguen `datalake/<zona>/<entidad>/<partición>=<valor>/`, como en
 `datalake/silver/usage_events/event_date=2025-08-01/`. Las columnas técnicas son lo que permite
 rastrear un número hasta el archivo del que salió.
 
-| Zona | Columnas que agrega |
-| :--- | :--- |
-| Bronze | `ingest_ts`, `ingest_date`, `source_file` |
-| Silver | `processed_ts`, `unit_imputed`, `cost_anomaly_flag`, `dq_status` |
-| Gold | `computed_ts`, `run_id`, y los flags de Silver que viajan hacia adelante |
-| Quarantine | `rule_name`, `quarantined_ts`, `raw_record` |
+
+| Zona       | Columnas que agrega                                                      |
+| ---------- | ------------------------------------------------------------------------ |
+| Bronze     | `ingest_ts`, `ingest_date`, `source_file`                                |
+| Silver     | `processed_ts`, `unit_imputed`, `cost_anomaly_flag`, `dq_status`         |
+| Gold       | `computed_ts`, `run_id`, y los flags de Silver que viajan hacia adelante |
+| Quarantine | `rule_name`, `quarantined_ts`, `raw_record`                              |
+
+
+
 
 ### 5.1 Particionado y archivos chicos
 
@@ -236,11 +254,13 @@ Acá hay dos problemas distintos: cuántas columnas de partición, y cuál. Los 
 una sola columna de fecha, y agregar `service` y `region` parece atractivo porque las consultas
 filtran por ahí, pero con este volumen sale al revés.
 
-| Particionado | Particiones | Filas cada una | Tamaño de archivo |
-| :--- | ---: | ---: | ---: |
-| solo fecha, elegido | 60 | 720 | ~30 KB |
-| fecha y `service` | 360 | 120 | ~6 KB |
-| fecha, `service`, `region` | 2.520 | 17 | ~1 KB |
+
+| Particionado               | Particiones | Filas cada una | Tamaño de archivo |
+| -------------------------- | ----------- | -------------- | ----------------- |
+| solo fecha, elegido        | 60          | 720            | ~30 KB            |
+| fecha y `service`          | 360         | 120            | ~6 KB             |
+| fecha, `service`, `region` | 2.520       | 17             | ~1 KB             |
+
 
 Un sistema de archivos distribuido paga un costo fijo por archivo y Spark agenda al menos una tarea
 por archivo. Con miles de archivos de 1 KB el job termina gastando el tiempo en leer metadata, y los
@@ -253,10 +273,12 @@ por micro-batch y partición tocada, y cada archivo de la fuente abarca casi 60 
 distintas. Si Bronze se particiona por `event_date`, un único micro-batch termina escribiendo en casi
 todas las particiones del calendario a la vez.
 
+
 | Bronze particionada por | Archivos escritos | Filas por archivo |
-| :--- | ---: | ---: |
-| `event_date` | 7.180 | 6,0 |
-| `ingest_date`, elegido | 120 | 360 |
+| ----------------------- | ----------------- | ----------------- |
+| `event_date`            | 7.180             | 6,0               |
+| `ingest_date`, elegido  | 120               | 360               |
+
 
 `coalesce` no lo arregla, porque el abanico se abre dentro de cada micro-batch y cada batch
 legítimamente tiene todas esas fechas. Así que las zonas particionan distinto: Bronze por
@@ -274,21 +296,23 @@ ahí debería ser `hour` o un bucket por hash de `org_id`, no `service`, que est
 La política es imputar primero: rechazamos una fila solo cuando se contradice y no vale nada sin el
 campo roto. Un campo fuera de rango se anula y se marca, y un valor plausible solo se marca.
 
-| Fuente | Regla | Filas | Acción |
-| :--- | :--- | ---: | :--- |
-| eventos | `event_id` nulo, `metric` desconocido, `timestamp` imposible de parsear, `unit` contra `metric`, `value` que no castea, claves que no joinean | 0 | quarantine |
-| eventos | `unit` nulo con un `metric` conocido | 2.075 | imputar `unit` desde `metric`, marcar `unit_imputed` |
-| eventos | `value` nulo | 877 | se queda, aporta null a las sumas de uso, el costo se cuenta igual |
-| eventos | `cost_usd_increment` por debajo de -0,01 | 211 | marcar `cost_anomaly_flag` |
-| `support_tickets` | `resolved_at` anterior a `created_at` | 0 | quarantine |
-| `billing_monthly` | `currency` USD con `exchange_rate_to_usd` distinto de 1,0 | 160 | forzar 1,0, marcar `fx_overridden` |
-| `support_tickets` | `csat` fuera de 1 a 5 | 40 | anular el campo, marcar `csat_invalid` |
-| `customers_orgs` | `nps_score` fuera de -100 a 100 | 1 | anular el campo, marcar `nps_score_invalid` |
-| `billing_monthly` | `credits` nulo | 137 | tratarlo como crédito cero |
-| `billing_monthly` | `subtotal` por debajo de 0 | 13 | marcar, se queda en el revenue como ajuste real |
-| `users` | `last_login` anterior a `created_at` | 232 | marcar |
-| `users` | `created_at` anterior al `signup_date` de la organización | 249 | marcar |
-| `marketing_touches` | `converted` con `clicked` en false | 96 | marcar |
+
+| Fuente              | Regla                                                                                                                                         | Filas | Acción                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------ |
+| eventos             | `event_id` nulo, `metric` desconocido, `timestamp` imposible de parsear, `unit` contra `metric`, `value` que no castea, claves que no joinean | 0     | quarantine                                                         |
+| eventos             | `unit` nulo con un `metric` conocido                                                                                                          | 2.075 | imputar `unit` desde `metric`, marcar `unit_imputed`               |
+| eventos             | `value` nulo                                                                                                                                  | 877   | se queda, aporta null a las sumas de uso, el costo se cuenta igual |
+| eventos             | `cost_usd_increment` por debajo de -0,01                                                                                                      | 211   | marcar `cost_anomaly_flag`                                         |
+| `support_tickets`   | `resolved_at` anterior a `created_at`                                                                                                         | 0     | quarantine                                                         |
+| `billing_monthly`   | `currency` USD con `exchange_rate_to_usd` distinto de 1,0                                                                                     | 160   | forzar 1,0, marcar `fx_overridden`                                 |
+| `support_tickets`   | `csat` fuera de 1 a 5                                                                                                                         | 40    | anular el campo, marcar `csat_invalid`                             |
+| `customers_orgs`    | `nps_score` fuera de -100 a 100                                                                                                               | 1     | anular el campo, marcar `nps_score_invalid`                        |
+| `billing_monthly`   | `credits` nulo                                                                                                                                | 137   | tratarlo como crédito cero                                         |
+| `billing_monthly`   | `subtotal` por debajo de 0                                                                                                                    | 13    | marcar, se queda en el revenue como ajuste real                    |
+| `users`             | `last_login` anterior a `created_at`                                                                                                          | 232   | marcar                                                             |
+| `users`             | `created_at` anterior al `signup_date` de la organización                                                                                     | 249   | marcar                                                             |
+| `marketing_touches` | `converted` con `clicked` en false                                                                                                            | 96    | marcar                                                             |
+
 
 Las dos bases de Quarantine están en cero: 0 de 43.200 eventos y 0 de 4.112 filas de maestros.
 
@@ -309,21 +333,13 @@ de NPS en la escala agregada de -100 a 100, porque `nps_surveys.nps_score` va de
 descarta una escala de 0 a 10 por respondente. Si la cátedra tiene otras escalas en mente, cambian dos
 reglas.
 
-Los casts usan `try_cast`. Spark 4 viene con el modo ANSI SQL activado, y un cast común levanta
-excepción con una entrada mal formada en lugar de devolver null, lo que cortaría el job en lugar de
+Los casts usan `try_cast`. Spark 4 viene con el modo ANSI SQL activado, y un cast común levanta  
+excepción con una entrada mal formada en lugar de devolver null, lo que cortaría el job en lugar de  
 mandar la fila a Quarantine.
 
-### 5.3 Muestras de quarantine para la entrega 2
-
-Los datos reales no rechazan nada, con lo cual el camino a Quarantine no tiene entrada y no se puede
-ejercitar desde Landing. Para la entrega 2 planificamos un conjunto chico de fixtures sintéticos: un
-registro por regla de rechazo, más un registro de control que parece defectuoso y tiene que pasar, con
-`unit` nulo y `value` como el texto `"4.25"`. Un conjunto de reglas puede fallar en los dos sentidos,
-y §5.2 muestra lo que costaría ser demasiado estricto. Los fixtures son datos de prueba: no entran
-nunca a `data/landing/` ni se cuentan en un perfil o en un mart. Las muestras de la entrega 2 salen de
-ellos más lo que generen los datos reales hasta entonces.
-
 ## 6. Arquitectura v1
+
+
 
 ### 6.1 Diagrama
 
@@ -340,37 +356,47 @@ Gold son solo batch.
 
 La banda de capacidades transversales es una sola caja en la figura. Por capacidad significa:
 
-| Capacidad | Cómo se implementa |
-| :--- | :--- |
-| Gobierno | Un escritor y una puerta por zona (§5), decisiones en `DECISIONS.md` |
-| Calidad | Reglas por fuente con bases medidas (§5.2), Quarantine como salida de control |
-| Metadatos | Esquemas explícitos (§3.2), un diccionario por zona, convenciones de partición y nombres |
-| Linaje | `ingest_ts`, `ingest_date`, `source_file`, `run_id`, y los flags `unit_imputed` y `fx_overridden` |
-| Seguridad | Credenciales fuera de git, mínimo privilegio por zona, sin secretos en los notebooks |
-| Observabilidad | Frescura contra O1 a O3, volumen de filas por partición, tamaño de Quarantine, logs de corrida |
+
+| Capacidad      | Cómo se implementa                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| Gobierno       | Un escritor y una puerta por zona (§5), decisiones en `DECISIONS.md`                                       |
+| Calidad        | Reglas por fuente con bases medidas (§5.2), Quarantine como salida de control                              |
+| Metadatos      | Esquemas explícitos (§3.2), un diccionario por zona, convenciones de partición y nombres                   |
+| Linaje         | `ingest_ts`, `ingest_date`, `source_file`, `run_id`, y los flags `unit_imputed` y `fx_overridden`          |
+| Seguridad      | Credenciales fuera de git, mínimo privilegio por zona, sin secretos en los notebooks                       |
+| Observabilidad | El batch diario contra O1, volumen de filas por partición, tamaño de Quarantine contra O3, logs de corrida |
+
+
+
 
 ### 6.2 Flujo batch
 
-| # | Paso | Herramienta | Entrada | Salida | Configuración clave |
-| :-- | :--- | :--- | :--- | :--- | :--- |
-| 1 | Levantar archivos nuevos | PySpark, registro de ingestados | listado de Landing | lista de archivos | el registro va por nombre de archivo, así una re-ejecución saltea lo que ya leyó |
-| 2 | Cargar maestros y facturación | `spark.read.csv` | 6 maestros CSV, y `billing_monthly.csv` en su batch mensual | dimensiones en Bronze, facturación por `month` | esquema explícito, `escape='"'` para `tags_json` |
-| 3 | Conformar y reparar | PySpark | eventos y dimensiones de Bronze | `usage_events` en Silver | `try_cast`, imputar `unit`, `dropDuplicates("event_id")`, sobreescribir por `event_date` |
-| 4 | Derivar rechazos | escritura PySpark | filas que fallan una regla de rechazo | Quarantine | `rule_name` como columna, nunca como partición |
-| 5 | Agregar los marts | `groupBy().agg()` | Silver | marts diarios y revenue mensual en Gold | `coalesce` para el tamaño de archivo, `partitionBy("usage_date")`, tasa forzada a 1,0 en USD |
-| 6 | Conciliar y publicar | PySpark, conector de Cassandra | Silver y Gold | tablas de Cassandra | puerta en 0,01 USD por organización y día, después upsert por la clave del mart |
+
+| #   | Paso                          | Herramienta                     | Entrada                                                     | Salida                                         | Configuración clave                                                                          |
+| --- | ----------------------------- | ------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1   | Levantar archivos nuevos      | PySpark, registro de ingestados | listado de Landing                                          | lista de archivos                              | el registro va por nombre de archivo, así una re-ejecución saltea lo que ya leyó             |
+| 2   | Cargar maestros y facturación | `spark.read.csv`                | 6 maestros CSV, y `billing_monthly.csv` en su batch mensual | dimensiones en Bronze, facturación por `month` | esquema explícito, `escape='"'` para `tags_json`                                             |
+| 3   | Conformar y reparar           | PySpark                         | eventos y dimensiones de Bronze                             | `usage_events` en Silver                       | `try_cast`, imputar `unit`, `dropDuplicates("event_id")`, sobreescribir por `event_date`     |
+| 4   | Derivar rechazos              | escritura PySpark               | filas que fallan una regla de rechazo                       | Quarantine                                     | `rule_name` como columna, nunca como partición                                               |
+| 5   | Agregar los marts             | `groupBy().agg()`               | Silver                                                      | marts diarios y revenue mensual en Gold        | `coalesce` para el tamaño de archivo, `partitionBy("usage_date")`, tasa forzada a 1,0 en USD |
+| 6   | Conciliar y publicar          | PySpark, conector de Cassandra  | Silver y Gold                                               | tablas de Cassandra                            | puerta en 0,01 USD por organización y día, después upsert por la clave del mart              |
+
+
+
 
 ### 6.3 Flujo streaming
 
-| # | Paso | Herramienta | Entrada | Salida | Configuración clave |
-| :-- | :--- | :--- | :--- | :--- | :--- |
-| 1 | Mirar el directorio | `readStream.json` | `usage_events_stream/` | frame del micro-batch | esquema explícito, `maxFilesPerTrigger` para acotar el batch |
-| 2 | Sellar el linaje | PySpark | frame del micro-batch | agrega `ingest_ts`, `ingest_date`, `source_file` | `input_file_name()` |
-| 3 | Separar fallas de parseo | PySpark | frame del micro-batch | filas limpias, filas corruptas | `columnNameOfCorruptRecord`. Va antes del dedupe, por lo que sigue |
-| 4 | Sacar repeticiones en vuelo | `withWatermark("ingest_ts", ...)` y después `dropDuplicatesWithinWatermark(["event_id"])` | solo las filas limpias | frame deduplicado | watermark sobre `ingest_ts`, nunca sobre `timestamp` |
-| 5 | Append a Bronze | `writeStream`, Parquet | filas limpias y deduplicadas | Bronze por `ingest_date` | un archivo por micro-batch, `checkpointLocation` |
-| 6 | Append de los rechazos | `writeStream`, Parquet | filas corruptas | Quarantine | checkpoint propio, para que un camino no bloquee al otro |
-| 7 | Actualizar la vista intradía | `foreachBatch`, writer de Cassandra | filas limpias y deduplicadas | costo y requests provisorios | una fila por batch id, de modo que un reproceso sobreescribe en lugar de contar doble |
+
+| #   | Paso                         | Herramienta                                                                               | Entrada                      | Salida                                           | Configuración clave                                                                   |
+| --- | ---------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 1   | Mirar el directorio          | `readStream.json`                                                                         | `usage_events_stream/`       | frame del micro-batch                            | esquema explícito, `maxFilesPerTrigger` para acotar el batch                          |
+| 2   | Sellar el linaje             | PySpark                                                                                   | frame del micro-batch        | agrega `ingest_ts`, `ingest_date`, `source_file` | `input_file_name()`                                                                   |
+| 3   | Separar fallas de parseo     | PySpark                                                                                   | frame del micro-batch        | filas limpias, filas corruptas                   | `columnNameOfCorruptRecord`. Va antes del dedupe, por lo que sigue                    |
+| 4   | Sacar repeticiones en vuelo  | `withWatermark("ingest_ts", ...)` y después `dropDuplicatesWithinWatermark(["event_id"])` | solo las filas limpias       | frame deduplicado                                | watermark sobre `ingest_ts`, nunca sobre `timestamp`                                  |
+| 5   | Append a Bronze              | `writeStream`, Parquet                                                                    | filas limpias y deduplicadas | Bronze por `ingest_date`                         | un archivo por micro-batch, `checkpointLocation`                                      |
+| 6   | Append de los rechazos       | `writeStream`, Parquet                                                                    | filas corruptas              | Quarantine                                       | checkpoint propio, para que un camino no bloquee al otro                              |
+| 7   | Actualizar la vista intradía | `foreachBatch`, writer de Cassandra                                                       | filas limpias y deduplicadas | costo y requests provisorios                     | una fila por batch id, de modo que un reproceso sobreescribe en lugar de contar doble |
+
 
 El trigger es `processingTime="1 minute"`. Ningún paso guarda una ventana, y el único estado es el
 conjunto de claves de dedupe.
@@ -387,11 +413,13 @@ avoid any possibility of duplicates", y que `dropDuplicatesWithinWatermark`, agr
 descarta "too late data older than watermark". Un watermark sobre el tiempo del evento borraría
 entonces los eventos tardíos de Bronze, cuyo trabajo es ser una copia fiel.
 
-| Columna del watermark | Conserva todos los eventos | Estado de dedupe | Veredicto |
-| :--- | :--- | :--- | :--- |
-| `ingest_ts`, 1 hora | Sí. Se sella en el momento de la lectura y nunca queda atrasada respecto de la llegada | Una hora de `event_id` | Elegida |
-| `timestamp`, 60 días | Sí, el umbral supera el rango de los datos | 60 días de claves, trivial hoy, 2,6 billones (2,6 × 10¹²) proyectado | Descartada por costo de estado |
-| `timestamp`, 1 a 7 días | No, pierde casi todos los eventos | Chico | Descartada, rompe Bronze |
+
+| Columna del watermark   | Conserva todos los eventos                                                             | Estado de dedupe                                                     | Veredicto                      |
+| ----------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------ |
+| `ingest_ts`, 1 hora     | Sí. Se sella en el momento de la lectura y nunca queda atrasada respecto de la llegada | Una hora de `event_id`                                               | Elegida                        |
+| `timestamp`, 60 días    | Sí, el umbral supera el rango de los datos                                             | 60 días de claves, trivial hoy, 2,6 billones (2,6 × 10¹²) proyectado | Descartada por costo de estado |
+| `timestamp`, 1 a 7 días | No, pierde casi todos los eventos                                                      | Chico                                                                | Descartada, rompe Bronze       |
+
 
 Así el watermark acota cuánto tiempo se recuerda un duplicado en tiempo de llegada, que es el
 horizonte en el que vive un reintento. La deduplicación exacta pasa igual más adelante: la
@@ -402,21 +430,23 @@ reconstrucción batch deduplica una partición `event_date` entera desde Bronze 
 Los requisitos son las dos capacidades del §2.1 de la consigna y las obligatorias del §4.4. La
 columna V nombra la que empuja el requisito.
 
-| Requisito | V | Componente | Decisión |
-| :--- | :--- | :--- | :--- |
-| Métricas de uso, consumo y costo incremental en near real-time | Velocidad | `foreachBatch` de streaming, vista intradía provisoria | D3 |
-| Ingesta batch a Bronze Parquet particionado, con esquemas explícitos | Variedad | Cargador batch, Bronze | D1, D4, D5 |
-| Ingesta streaming: esquema, watermark, dedupe, late data, checkpointing | Velocidad | Structured Streaming, Bronze | D1, D3, D5 |
-| Calidad: reglas verificables, filas inválidas separadas, quarantine en Parquet | Veracidad | Conformar y reparar, Quarantine | D6, D7, D10 |
-| Silver: normalizar, conformar, joinear dimensiones, tratar nulos y outliers, v1 y v2 | Variedad, Veracidad | Conformar y reparar, Silver | D1, D2, D6 |
-| Features: `daily_cost_usd`, `requests`, `cpu_hours`, `storage_gb_hours`, `genai_tokens`, `carbon_kg` | Valor | Agregación, Gold | D6, §7 |
-| Anomalías con un método justificado | Veracidad | Agregación, `cost_anomaly_mart` | D12, abierta |
-| Marts de Gold para FinOps, Soporte y Producto con granos claros | Valor | Gold | D4, §1.2 |
-| Serving: keyspace de Cassandra, tablas query-first, carga desde Spark | Valor | Cassandra, paso de publicación | D11 abierta, §1.2 |
-| Idempotencia: reprocesar sin duplicados | Veracidad | Sobreescritura de partición, upsert, registro de ingestados | D8 |
-| Performance: particionado, control de archivos, coalesce, evidencia de tamaños | Volumen | Layout de Bronze, Silver y Gold | D5 |
-| Gobierno: calidad, metadatos, linaje, responsabilidades, seguridad, observabilidad | todas | Banda transversal, §6.1 | D4, D6, D8 |
-| Documentación: diagrama, diccionario, decisiones, quickstart, evidencias | todas | `docs/`, `DECISIONS.md`, `evidence/`, `README.md` | este documento |
+
+| Requisito                                                                                            | V                   | Componente                                                  | Decisión          |
+| ---------------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------- | ----------------- |
+| Métricas de uso, consumo y costo incremental en near real-time                                       | Velocidad           | `foreachBatch` de streaming, vista intradía provisoria      | D3                |
+| Ingesta batch a Bronze Parquet particionado, con esquemas explícitos                                 | Variedad            | Cargador batch, Bronze                                      | D1, D4, D5        |
+| Ingesta streaming: esquema, watermark, dedupe, late data, checkpointing                              | Velocidad           | Structured Streaming, Bronze                                | D1, D3, D5        |
+| Calidad: reglas verificables, filas inválidas separadas, quarantine en Parquet                       | Veracidad           | Conformar y reparar, Quarantine                             | D6, D7, D10       |
+| Silver: normalizar, conformar, joinear dimensiones, tratar nulos y outliers, v1 y v2                 | Variedad, Veracidad | Conformar y reparar, Silver                                 | D1, D2, D6        |
+| Features: `daily_cost_usd`, `requests`, `cpu_hours`, `storage_gb_hours`, `genai_tokens`, `carbon_kg` | Valor               | Agregación, Gold                                            | D6, §7            |
+| Anomalías con un método justificado                                                                  | Veracidad           | Agregación, `cost_anomaly_mart`                             | D12, abierta      |
+| Marts de Gold para FinOps, Soporte y Producto con granos claros                                      | Valor               | Gold                                                        | D4, §1.2          |
+| Serving: keyspace de Cassandra, tablas query-first, carga desde Spark                                | Valor               | Cassandra, paso de publicación                              | D11 abierta, §1.2 |
+| Idempotencia: reprocesar sin duplicados                                                              | Veracidad           | Sobreescritura de partición, upsert, registro de ingestados | D8                |
+| Performance: particionado, control de archivos, coalesce, evidencia de tamaños                       | Volumen             | Layout de Bronze, Silver y Gold                             | D5                |
+| Gobierno: calidad, metadatos, linaje, responsabilidades, seguridad, observabilidad                   | todas               | Banda transversal, §6.1                                     | D4, D6, D8        |
+| Documentación: diagrama, diccionario, decisiones, quickstart, evidencias                             | todas               | `docs/`, `DECISIONS.md`, `evidence/`, `README.md`           | este documento    |
+
 
 D11 y D12 están abiertas a propósito y las dos vencen en la entrega 2.
 
@@ -506,7 +536,7 @@ contigua, lo que le viene bien a la escritura en Cassandra porque la tabla de se
 la organización como partition key y la fecha como clustering column.
 
 El reducer suma los pares y después decide, por medida, si había algo que informar: un conteo en cero
-pasa a null y no a 0, y ahí es donde se hace cumplir O7. Un día sin `requests` usables informa null,
+pasa a null y no a 0. Un día sin `requests` usables informa null,
 de modo que un promedio sobre el mart no queda arrastrado por días que nunca se midieron.
 
 La salida es un registro por clave en
@@ -518,10 +548,12 @@ preocupación de §5.1, y la escritura sobreescribe las particiones que calculó
 
 Estos son los dos lugares donde una implementación obvia se equivoca.
 
-| Caso | Lo que se haría de forma obvia | Lo que hace este flujo |
-| :--- | :--- | :--- |
-| 211 eventos con `cost_usd_increment` por debajo de -0,01 | Filtrarlos, o llevarlos a 0, para no tener un total negativo | Dejarlos en la suma, porque un incremento negativo es una corrección real y descartarlo infla el gasto. Contarlos en `negative_cost_events` para que quien revise vea que el día se apoya en correcciones |
-| 10.800 eventos v1 sin `carbon_kg` ni `genai_tokens` | Ramificar por `schema_version`, o saltear v1, o llevar los campos faltantes a 0 | Nada. El esquema único le da los 13 campos a todos los registros, y el par suma y conteo hace que un nulo no aporte a ninguno de los dos. Un día de solo v1 emite null en las dos medidas, y uno mezclado emite el subtotal de v2 |
+
+| Caso                                                     | Lo que se haría de forma obvia                                                  | Lo que hace este flujo                                                                                                                                                                                                            |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 211 eventos con `cost_usd_increment` por debajo de -0,01 | Filtrarlos, o llevarlos a 0, para no tener un total negativo                    | Dejarlos en la suma, porque un incremento negativo es una corrección real y descartarlo infla el gasto. Contarlos en `negative_cost_events` para que quien revise vea que el día se apoya en correcciones                         |
+| 10.800 eventos v1 sin `carbon_kg` ni `genai_tokens`      | Ramificar por `schema_version`, o saltear v1, o llevar los campos faltantes a 0 | Nada. El esquema único le da los 13 campos a todos los registros, y el par suma y conteo hace que un nulo no aporte a ninguno de los dos. Un día de solo v1 emite null en las dos medidas, y uno mezclado emite el subtotal de v2 |
+
 
 Ninguna etapa lee `schema_version` para decidir algo, y eso es lo que queremos conservar cuando
 aparezca una v3: se agrega el campo al esquema y a la tupla de valores, y ninguna lógica de etapa
@@ -529,15 +561,17 @@ cambia.
 
 ### 7.6 Cómo corre Spark lo mismo
 
-| Etapa de MapReduce | Equivalente en Spark |
-| :--- | :--- |
-| Input splits | Particiones del scan de Parquet, con la misma poda por `event_date` |
-| Map | Una proyección fusionada en el scan, no una etapa aparte |
-| Combiner | Agregación parcial del lado del map, que elige Catalyst, normalmente un hash aggregate |
-| Partitioner | `HashPartitioner` sobre las columnas de agrupamiento, aplicado en la escritura del shuffle |
-| Shuffle y sort | Un exchange. Spark hace hash aggregate por defecto y ordena solo cuando tiene que derramar a disco |
-| Reduce | La agregación final del lado de la lectura del shuffle |
-| Output | `write.partitionBy("usage_date")` después de un `coalesce` para dimensionar los archivos |
+
+| Etapa de MapReduce | Equivalente en Spark                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| Input splits       | Particiones del scan de Parquet, con la misma poda por `event_date`                                |
+| Map                | Una proyección fusionada en el scan, no una etapa aparte                                           |
+| Combiner           | Agregación parcial del lado del map, que elige Catalyst, normalmente un hash aggregate             |
+| Partitioner        | `HashPartitioner` sobre las columnas de agrupamiento, aplicado en la escritura del shuffle         |
+| Shuffle y sort     | Un exchange. Spark hace hash aggregate por defecto y ordena solo cuando tiene que derramar a disco |
+| Reduce             | La agregación final del lado de la lectura del shuffle                                             |
+| Output             | `write.partitionBy("usage_date")` después de un `coalesce` para dimensionar los archivos           |
+
 
 Con la API de DataFrames el job es un solo `groupBy().agg()`, que está en el apéndice D junto con las
 diferencias que importan. El `sum` de Spark ya ignora los nulos y devuelve null cuando todas las
@@ -548,84 +582,90 @@ desbalanceo, y esas cosas siguen decidiendo si el job de Spark rinde.
 
 ## 8. Plan
 
+
+
 ### 8.1 Supuestos
 
 Los riesgos de los datos están en §3.1. Estos son los supuestos sobre los que se apoya el diseño.
 
-| Supuesto | Si está mal |
-| :--- | :--- |
-| `csat` es una escala de 1 a 5, y las dos columnas de NPS son la escala agregada de -100 a 100 | Cambian los umbrales de dos reglas de §5.2, y nada más se mueve |
-| Q3, Q4 y Q5 se piden por organización, como Q1 y Q2 | El §7.4 de la consigna no lo dice para esas tres, y Q3 en particular puede ser global. Si alguna es global, no entra por una partición `(org_id)` y necesita su tabla propia particionada por fecha (D11) |
-| `metric` determina `unit` uno a uno, como medimos | La imputación de `unit` deja de ser una derivación. La regla pasa a ser un chequeo de contradicción y esos 2.075 eventos van a Quarantine |
-| Una factura en USD debería traer una tasa de 1,0 | La corrección de D9 está mal y el revenue por organización se mueve hasta un 12% |
-| Un `credits` nulo significa sin crédito, no un monto desconocido | El revenue queda inflado en 137 facturas |
-| Los archivos de Landing llegan completos, nunca a medio escribir | El registro de ingestados puede promover un archivo truncado, y la promoción necesita un chequeo de tamaño o una marca |
-| Un evento trae una sola medición de una métrica | El paso de map necesita más de un slot de valor por registro |
-| La muestra de 60 días es representativa de un sistema más grande | La proyección de §2.1 está mal, y cambia el consejo de particionado que depende de ella |
-| El dataset no cambia entre entregas | Hay que regenerar todas las bases de `evidence/` y revisar los umbrales de §1.3 |
-| El tooling que planeamos alcanza: Colab o equivalente para Spark, un tier gratis de AstraDB para serving | Pasamos a Spark local y a un contenedor de Cassandra. Ninguna de las dos cosas cambia el diseño |
+
+| Supuesto                                                                                                 | Si está mal                                                                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `csat` es una escala de 1 a 5, y las dos columnas de NPS son la escala agregada de -100 a 100            | Cambian los umbrales de dos reglas de §5.2, y nada más se mueve                                                                                                                                           |
+| Q3, Q4 y Q5 se piden por organización, como Q1 y Q2                                                      | El §7.4 de la consigna no lo dice para esas tres, y Q3 en particular puede ser global. Si alguna es global, no entra por una partición `(org_id)` y necesita su tabla propia particionada por fecha (D11) |
+| `metric` determina `unit` uno a uno, como medimos                                                        | La imputación de `unit` deja de ser una derivación. La regla pasa a ser un chequeo de contradicción y esos 2.075 eventos van a Quarantine                                                                 |
+| Una factura en USD debería traer una tasa de 1,0                                                         | La corrección de D9 está mal y el revenue por organización se mueve hasta un 12%                                                                                                                          |
+| Un `credits` nulo significa sin crédito, no un monto desconocido                                         | El revenue queda inflado en 137 facturas                                                                                                                                                                  |
+| Los archivos de Landing llegan completos, nunca a medio escribir                                         | El registro de ingestados puede promover un archivo truncado, y la promoción necesita un chequeo de tamaño o una marca                                                                                    |
+| Un evento trae una sola medición de una métrica                                                          | El paso de map necesita más de un slot de valor por registro                                                                                                                                              |
+| La muestra de 60 días es representativa de un sistema más grande                                         | La proyección de §2.1 está mal, y cambia el consejo de particionado que depende de ella                                                                                                                   |
+| El dataset no cambia entre entregas                                                                      | Hay que regenerar todas las bases de `evidence/` y revisar los umbrales de §1.3                                                                                                                           |
+| El tooling que planeamos alcanza: Colab o equivalente para Spark, un tier gratis de AstraDB para serving | Pasamos a Spark local y a un contenedor de Cassandra. Ninguna de las dos cosas cambia el diseño                                                                                                           |
+
+
+
 
 ### 8.2 Riesgos del proyecto
 
-| Riesgo | Impacto | Mitigación |
-| :--- | :--- | :--- |
-| El setup de AstraDB traba el serving tarde en la entrega 2 | Fallan dos ítems del checklist, el keyspace y las consultas | Hacer el spike en la semana 1 contra una tabla vacía |
-| El estado del checkpoint queda inservible después de un cambio de esquema o de código | El job no arranca y la demo se cuelga | Documentar un reset, y mantener Bronze reconstruible así resetear no cuesta nada |
-| Cinco personas editando un mismo documento de diseño | Conflictos de merge y ediciones perdidas | Un dueño por sección, ramas cortas, sin ediciones en paralelo sobre la misma sección |
-| El speed layer se construye antes que el mart obligatorio | La entrega 2 se queda sin `org_daily_usage_by_service` por algo opcional | §8.5 deja la vista provisoria para después de la entrega 2 |
-| Experiencia desigual con Spark en el equipo | El trabajo se concentra en una o dos personas | Hacer de a dos el primer job de cada área, y usar el notebook como referencia común |
-| El feedback de la entrega 1 llega tarde y es sustancial | El rework compite con la implementación nueva | Las correcciones son el primer workstream de §8.4, no el último |
+
+| Riesgo                                                                                | Impacto                                                                  | Mitigación                                                                           |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| El setup de AstraDB traba el serving tarde en la entrega 2                            | Fallan dos ítems del checklist, el keyspace y las consultas              | Hacer el spike en la semana 1 contra una tabla vacía                                 |
+| El estado del checkpoint queda inservible después de un cambio de esquema o de código | El job no arranca y la demo se cuelga                                    | Documentar un reset, y mantener Bronze reconstruible así resetear no cuesta nada     |
+| Cinco personas editando un mismo documento de diseño                                  | Conflictos de merge y ediciones perdidas                                 | Un dueño por sección, ramas cortas, sin ediciones en paralelo sobre la misma sección |
+| El speed layer se construye antes que el mart obligatorio                             | La entrega 2 se queda sin `org_daily_usage_by_service` por algo opcional | §8.5 deja la vista provisoria para después de la entrega 2                           |
+| Experiencia desigual con Spark en el equipo                                           | El trabajo se concentra en una o dos personas                            | Hacer de a dos el primer job de cada área, y usar el notebook como referencia común  |
+| El feedback de la entrega 1 llega tarde y es sustancial                               | El rework compite con la implementación nueva                            | Las correcciones son el primer workstream de §8.4, no el último                      |
+
+
+
 
 ### 8.3 Decisiones abiertas
 
-| Decisión | Qué está abierto | Se decide antes de |
-| :--- | :--- | :--- |
-| D11, modelo query-first en Cassandra | Si `(org_id)` sola acota el crecimiento de la partición o si hace falta un bucket por mes, el orden de clustering para Q2, si el mart de anomalías es tabla propia, y si Q3 a Q5 son por organización o globales | Escribir el keyspace en la entrega 2, que lo necesita |
-| D12, método y umbral de anomalías | z-score, MAD o percentiles, con qué grano, sobre qué ventana, con qué corte | `cost_anomaly_mart` en la entrega 2. Necesita la serie diaria agregada, no los incrementos crudos |
+
+| Decisión                             | Qué está abierto                                                                                                                                                                                                 | Se decide antes de                                                                                |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| D11, modelo query-first en Cassandra | Si `(org_id)` sola acota el crecimiento de la partición o si hace falta un bucket por mes, el orden de clustering para Q2, si el mart de anomalías es tabla propia, y si Q3 a Q5 son por organización o globales | Escribir el keyspace en la entrega 2, que lo necesita                                             |
+| D12, método y umbral de anomalías    | z-score, MAD o percentiles, con qué grano, sobre qué ventana, con qué corte                                                                                                                                      | `cost_anomaly_mart` en la entrega 2. Necesita la serie diaria agregada, no los incrementos crudos |
+
+
+
 
 ### 8.4 Roles y esfuerzo
 
 Cinco roles, uno por persona, que el equipo se reparte. Cada rol es dueño del código, la evidencia y
 la sección de este documento de su área.
 
-| Rol | De qué es dueño |
-| :--- | :--- |
-| Ingesta | Cargadores batch, el job de streaming, Bronze, los checkpoints, el registro de ingestados |
-| Calidad y Silver | Las reglas de §5.2, Quarantine, la conformación, los joins con dimensiones |
-| Marts | Las agregaciones de Gold, las features, el componente de anomalías |
-| Serving | Keyspace, tablas query-first, la carga de Spark a Cassandra, las consultas CQL |
-| Docs y release | Este documento, el diagrama, `DECISIONS.md`, `evidence/`, los tags, el quickstart |
+
+| Rol              | De qué es dueño                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| Ingesta          | Cargadores batch, el job de streaming, Bronze, los checkpoints, el registro de ingestados |
+| Calidad y Silver | Las reglas de §5.2, Quarantine, la conformación, los joins con dimensiones                |
+| Marts            | Las agregaciones de Gold, las features, el componente de anomalías                        |
+| Serving          | Keyspace, tablas query-first, la carga de Spark a Cassandra, las consultas CQL            |
+| Docs y release   | Este documento, el diagrama, `DECISIONS.md`, `evidence/`, los tags, el quickstart         |
+
 
 Estimación contra el checklist de la entrega 2, en horas-persona.
 
-| # | Workstream | Rol | Horas | Depende de |
-| :-- | :--- | :--- | ---: | :--- |
-| 1 | Correcciones del feedback de la entrega 1 | todos | 10 | el feedback |
-| 2 | Batch a Bronze, tres maestros | Ingesta | 10 | |
-| 3 | Streaming a Bronze, con watermark, dedupe y checkpointing | Ingesta | 16 | 2 |
-| 4 | Reglas de calidad, Quarantine y las muestras de los fixtures | Calidad y Silver | 14 | 3 |
-| 5 | Silver para eventos y un maestro, joins, tres features | Calidad y Silver | 18 | 4 |
-| 6 | `org_daily_usage_by_service` en Gold | Marts | 10 | 5 |
-| 7 | Serving: keyspace, tabla, cargador, dos consultas CQL | Serving | 16 | 6, D11 |
-| 8 | Componente de analítica o ML | Marts | 12 | 5 |
-| 9 | Evidencia de idempotencia, conteos antes y después | Ingesta | 6 | 3, 6 |
-| 10 | Gobierno preliminar: controles, metadatos, linaje, accesos | Docs y release | 8 | |
-| 11 | Quickstart, logs, evidencias de corrida, diagrama actualizado, backlog final | Docs y release | 14 | todos |
-| | Total | | 134 | |
 
-134 horas en las seis semanas hasta el 2026-11-16, entre cinco personas, son unas cuatro horas y media
-por semana cada uno. El workstream 7 es el que tiene la única dependencia externa, y por eso el spike
+| #   | Workstream                                                                   | Rol              | Horas | Depende de  |
+| --- | ---------------------------------------------------------------------------- | ---------------- | ----- | ----------- |
+| 1   | Correcciones del feedback de la entrega 1                                    | todos            | 10    | el feedback |
+| 2   | Batch a Bronze, tres maestros                                                | Ingesta          | 10    |             |
+| 3   | Streaming a Bronze, con watermark, dedupe y checkpointing                    | Ingesta          | 16    | 2           |
+| 4   | Reglas de calidad, Quarantine y las muestras de los fixtures                 | Calidad y Silver | 14    | 3           |
+| 5   | Silver para eventos y un maestro, joins, tres features                       | Calidad y Silver | 18    | 4           |
+| 6   | `org_daily_usage_by_service` en Gold                                         | Marts            | 10    | 5           |
+| 7   | Serving: keyspace, tabla, cargador, dos consultas CQL                        | Serving          | 16    | 6, D11      |
+| 8   | Componente de analítica o ML                                                 | Marts            | 12    | 5           |
+| 9   | Evidencia de idempotencia, conteos antes y después                           | Ingesta          | 6     | 3, 6        |
+| 10  | Gobierno preliminar: controles, metadatos, linaje, accesos                   | Docs y release   | 8     |             |
+| 11  | Quickstart, logs, evidencias de corrida, diagrama actualizado, backlog final | Docs y release   | 14    | todos       |
+|     | Total                                                                        |                  | 134   |             |
+
+
+134 horas en las seis semanas hasta el 2026-11-16, entre cinco personas, son unas cuatro horas y media  
+por semana cada uno. El workstream 7 es el que tiene la única dependencia externa, y por eso el spike  
 de AstraDB va en la semana 1.
 
-### 8.5 Backlog hacia la entrega 2
-
-| Prioridad | Ítem | Nota |
-| :--- | :--- | :--- |
-| Obligatorio | Workstreams 1 a 11 de arriba | El checklist de la entrega 2 |
-| Obligatorio | Decidir D11 y D12 | Las dos traban ítems de ese checklist |
-| Deseable | La vista intradía provisoria (§4.4) | Después de la entrega 2, que pide el mart diario y no un speed layer |
-| Deseable | Los marts de Gold que faltan: `revenue_by_org_month`, `tickets_by_org_date`, `genai_tokens_by_org_date`, `cost_anomaly_mart` | La entrega 2 necesita solo el mart de FinOps. El resto es para el MVP final |
-| Deseable | Chequeos automáticos de las reglas de calidad | Hoy las reglas son diseño más fixtures |
-| Fuera de alcance | Delta o Iceberg para sobreescritura atómica de particiones | Anotado en D4, fuera del stack pedido |
-| Fuera de alcance | Ingesta real desde un message broker | La consigna nos da un directorio de archivos, y §5.1 depende de eso |
-| Fuera de alcance | Correr en la escala proyectada de §2.1 | La proyección justifica el diseño, no es un entregable |
