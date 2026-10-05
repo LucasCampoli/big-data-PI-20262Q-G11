@@ -1,7 +1,7 @@
 # Cloud Provider Analytics, notas de diseño
 
 Proyecto integrador de Big Data, ITBA, segundo cuatrimestre 2026.
-Primera entrega: diseño y fundación de datos. Versión 1, 2026-10-03.
+Primera entrega: diseño y fundación de datos. Versión 1, 2026-10-05.
 
 Grupo 11: Ivan Odzomek, Lucas Campoli, Matias Sapino, Diego Rabinovich, Diego Badin.
 
@@ -344,7 +344,7 @@ mandar la fila a Quarantine.
 
 ### 6.1 Diagrama
 
-![Cloud Provider Analytics, arquitectura v1, 2026-10-03](architecture_v1.svg)
+![Cloud Provider Analytics, arquitectura v1, híbrido estilo Lambda, 2026-10-05](architecture_v1.svg)
 
 La fuente en Mermaid está en el apéndice E.
 
@@ -429,24 +429,24 @@ reconstrucción batch deduplica una partición `event_date` entera desde Bronze 
 ### 6.4 Matriz requisito-componente
 
 Los requisitos son las dos capacidades del §2.1 de la consigna y las obligatorias del §4.4. La
-columna V nombra la que empuja el requisito.
+columna V nombra la que empuja el requisito, y la columna Objetivo, el de §1.3 que lo mide.
 
 
-| Requisito                                                                                            | V                   | Componente                                                  | Decisión          |
-| ---------------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------- | ----------------- |
-| Métricas de uso, consumo y costo incremental en near real-time                                       | Velocidad           | `foreachBatch` de streaming, vista intradía provisoria      | D3                |
-| Ingesta batch a Bronze Parquet particionado, con esquemas explícitos                                 | Variedad            | Cargador batch, Bronze                                      | D1, D4, D5        |
-| Ingesta streaming: esquema, watermark, dedupe, late data, checkpointing                              | Velocidad           | Structured Streaming, Bronze                                | D1, D3, D5        |
-| Calidad: reglas verificables, filas inválidas separadas, quarantine en Parquet                       | Veracidad           | Conformar y reparar, Quarantine                             | D6, D7, D10       |
-| Silver: normalizar, conformar, joinear dimensiones, tratar nulos y outliers, v1 y v2                 | Variedad, Veracidad | Conformar y reparar, Silver                                 | D1, D2, D6        |
-| Features: `daily_cost_usd`, `requests`, `cpu_hours`, `storage_gb_hours`, `genai_tokens`, `carbon_kg` | Valor               | Agregación, Gold                                            | D6, §7            |
-| Anomalías con un método justificado                                                                  | Veracidad           | Agregación, `cost_anomaly_mart`                             | D12, abierta      |
-| Marts de Gold para FinOps, Soporte y Producto con granos claros                                      | Valor               | Gold                                                        | D4, §1.2          |
-| Serving: keyspace de Cassandra, tablas query-first, carga desde Spark                                | Valor               | Cassandra, paso de publicación                              | D11 abierta, §1.2 |
-| Idempotencia: reprocesar sin duplicados                                                              | Veracidad           | Sobreescritura de partición, upsert, registro de ingestados | D8                |
-| Performance: particionado, control de archivos, coalesce, evidencia de tamaños                       | Volumen             | Layout de Bronze, Silver y Gold                             | D5                |
-| Gobierno: calidad, metadatos, linaje, responsabilidades, seguridad, observabilidad                   | todas               | Banda transversal, §6.1                                     | D4, D6, D8        |
-| Documentación: diagrama, diccionario, decisiones, quickstart, evidencias                             | todas               | `docs/`, `DECISIONS.md`, `evidence/`, `README.md`           | este documento    |
+| Requisito                                                                                            | V                   | Componente                                                  | Objetivo | Decisión          |
+| ---------------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------- | -------- | ----------------- |
+| Métricas de uso, consumo y costo incremental en near real-time                                       | Velocidad           | `foreachBatch` de streaming, vista intradía provisoria      |          | D3                |
+| Ingesta batch a Bronze Parquet particionado, con esquemas explícitos                                 | Variedad            | Cargador batch, Bronze                                      |          | D1, D4, D5        |
+| Ingesta streaming: esquema, watermark, dedupe, late data, checkpointing                              | Velocidad           | Structured Streaming, Bronze                                | O2       | D1, D3, D5        |
+| Calidad: reglas verificables, filas inválidas separadas, quarantine en Parquet                       | Veracidad           | Conformar y reparar, Quarantine                             | O3       | D6, D7, D10       |
+| Silver: normalizar, conformar, joinear dimensiones, tratar nulos y outliers, v1 y v2                 | Variedad, Veracidad | Conformar y reparar, Silver                                 | O2       | D1, D2, D6        |
+| Features: `daily_cost_usd`, `requests`, `cpu_hours`, `storage_gb_hours`, `genai_tokens`, `carbon_kg` | Valor               | Agregación, Gold                                            |          | D6, §7            |
+| Anomalías con un método justificado                                                                  | Veracidad           | Agregación, `cost_anomaly_mart`                             |          | D12, abierta      |
+| Marts de Gold para FinOps, Soporte y Producto con granos claros                                      | Valor               | Gold                                                        | O1       | D4, §1.2          |
+| Serving: keyspace de Cassandra, tablas query-first, carga desde Spark                                | Valor               | Cassandra, paso de publicación                              |          | D11 abierta, §1.2 |
+| Idempotencia: reprocesar sin duplicados                                                              | Veracidad           | Sobreescritura de partición, upsert, registro de ingestados | O2       | D8                |
+| Performance: particionado, control de archivos, coalesce, evidencia de tamaños                       | Volumen             | Layout de Bronze, Silver y Gold                             |          | D5                |
+| Gobierno: calidad, metadatos, linaje, responsabilidades, seguridad, observabilidad                   | todas               | Banda transversal, §6.1                                     | O1, O3   | D4, D6, D8        |
+| Documentación: diagrama, diccionario, decisiones, quickstart, evidencias                             | todas               | `docs/`, `DECISIONS.md`, `evidence/`, `README.md`           |          | este documento    |
 
 
 D11 y D12 están abiertas a propósito y las dos vencen en la entrega 2.
@@ -647,7 +647,7 @@ la sección de este documento de su área.
 | Docs y release   | Este documento, el diagrama, `DECISIONS.md`, `evidence/`, los tags, el quickstart         |
 
 
-Estimación contra el checklist de la entrega 2, en horas-persona.
+Los próximos pasos son estos workstreams, estimados contra el checklist de la entrega 2 en horas-persona.
 
 
 | #   | Workstream                                                                   | Rol              | Horas | Depende de  |
