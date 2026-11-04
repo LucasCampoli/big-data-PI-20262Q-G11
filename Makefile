@@ -40,7 +40,10 @@ reset-stream:     ## new checkpoints: drop both streaming queries' state and out
 silver:           ## rebuild Silver and the rule Quarantine from Bronze
 	$(RUN) silver
 
+gold:             ## daily FinOps mart (reconciled against Silver) and the anomaly mart
+	$(RUN) gold anomalies
+
 fixtures:         ## the pipeline over the synthetic fixtures (tests/fixtures/landing) in a separate lake
 	rm -rf datalake/_fixtures logs/fixtures
 	DATA_LANDING=tests/fixtures/landing DATALAKE_ROOT=datalake/_fixtures LOG_DIR=logs/fixtures \
-	SERVING_TARGET=none $(RUN) bronze-batch bronze-stream silver
+	$(RUN) bronze-batch bronze-stream silver gold anomalies

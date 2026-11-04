@@ -19,7 +19,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | D9 | Convertir moneda por factura, y forzar USD a 1,0 | Aceptada |
 | D10 | Las muestras de quarantine salen de fixtures en la entrega 2 | Aceptada |
 | D11 | Modelo query-first de tablas en Cassandra | Abierta |
-| D12 | Método y umbral de detección de anomalías | Abierta |
+| D12 | Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5 | Aceptada |
 | D13 | Carga batch: registro de ingestados, y el dedupe por clave va en Silver | Aceptada |
 | D14 | Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino | Aceptada |
 | D15 | Quarantine en cuatro tablas, una por escritor | Aceptada |
@@ -109,8 +109,10 @@ archivo por micro-batch y partición tocada, y cada archivo de la fuente abarca 
 evento distintas.
 
 Decisión. Particionar por una sola columna de fecha, dejando `service` y `region` como columnas.
-Bronze usa `ingest_date`, Silver y Gold usan `event_date`. Silver se reconstruye en batch con
-`coalesce` por partición. La retención de Bronze se mide sobre `ingest_date`.
+Bronze usa `ingest_date` y Silver usa `event_date`. Gold particiona por `usage_date`, que es la
+misma fecha del evento con el nombre que le da el grano del mart (`org_id`, `usage_date`,
+`service`). Silver y Gold se reconstruyen en batch con `coalesce` por partición. La retención de
+Bronze se mide sobre `ingest_date`.
 
 Alternativas. Agregar `service` y `region` da 2.520 particiones de unas 17 filas, o sea archivos de
 alrededor de 1 KB, donde manda el costo de metadata por archivo y el scheduling de una tarea por
@@ -277,19 +279,51 @@ entra por una partición `(org_id)`, sino que necesita su propia tabla particion
 Por qué lo postergamos. Depende de los conteos de filas de los marts, que existen recién cuando corre
 Gold. Se decide antes de escribir el esquema de Cassandra en la entrega 2.
 
-## D12. Método y umbral de detección de anomalías. Abierta
+## D12. Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5
 
-Lo que ya está decidido. El método tiene que ser relativo y no un umbral fijo de costo, porque el
-mismo monto es normal para una organización grande y una anomalía para una chica. Los costos negativos
-se marcan, no se descartan.
+Contexto. El método tenía que ser relativo, porque el mismo monto es normal para una organización
+grande y raro para una chica, y se elegía mirando la serie diaria de Gold. Esa serie tiene 11.050
+filas en 262 combinaciones de organización y servicio. Cada combinación tiene uso entre 24 y 60 de
+los 60 días (mediana 39). El costo diario va de -134,24 a 340,53 USD, con p50 en 8,78 y p99 en
+63,87, y 35 días tienen costo total negativo.
 
-Lo que está abierto. Cuál de z-score, MAD o percentiles, con qué grano, sobre qué ventana móvil y con
-qué corte.
+Decisión. `cost_anomaly_mart` tiene el grano de `org_daily_usage_by_service` y, para cada fila,
+compara el costo del día con los días anteriores de la misma organización y servicio:
 
-Por qué lo postergamos. La elección necesita la distribución de la serie diaria agregada y no de los
-incrementos crudos. Por ahora preferimos MAD porque una cola larga como esta, p99 en 16,69 contra un
-máximo de 317,43, casi no lo mueve, pero eso hay que verificarlo contra datos de Gold en lugar de
-darlo por sentado. Se decide en la entrega 2 junto con `cost_anomaly_mart`.
+- Historia: los días con uso dentro de los 28 días previos, sin incluir el día evaluado. Un día con
+  menos de 14 días de historia no se puntúa (`score_method = insufficient_history`).
+- Score: `0,6745 × (x − mediana) / MAD`, el z-score modificado de Iglewicz y Hoaglin. Si MAD es 0,
+  porque más de la mitad de la historia es un mismo valor, se usa la desviación absoluta media
+  escalada por 1,2533 (`mean_ad`). Si las dos son 0, no hay score (`constant_history`).
+- Corte: `|score| > 3,5` marca `is_anomaly`, con `anomaly_direction` igual a `spike` o `drop`.
+
+Medido sobre Gold, se puntúa el 63,7% de las filas (7.043). El |score| tiene p50 0,74, p95 2,67,
+p99 5,47 y p99,9 22,36:
+
+| Corte | Días marcados | % de los puntuados |
+| :--- | ---: | ---: |
+| 3,0 | 262 | 3,72% |
+| 3,5, elegido | 180 | 2,56% |
+| 5,0 | 86 | 1,22% |
+| 7,0 | 52 | 0,74% |
+
+Con 3,5 salen 138 picos y 42 caídas en 69 organizaciones, unas 4 a 5 alertas por día para toda la
+cartera. El caso más alto es `org_okep7y6w`, compute, el 2025-08-07: 191,90 USD contra una mediana
+de 11,27 y un MAD de 1,14. Dejamos el 3,5 de la literatura porque el volumen de alertas se puede
+revisar a mano. `ANOMALY_THRESHOLD`, `ANOMALY_WINDOW_DAYS` y `ANOMALY_MIN_HISTORY` lo cambian sin
+tocar código.
+
+Alternativas. La media y el desvío estándar los mueven los mismos picos que tienen que encontrar.
+Los percentiles por serie necesitan muchos más días que los 24 a 60 que hay por combinación. Una
+línea de base sobre los 60 días completos puntúa más filas, pero usa días posteriores al evaluado y
+no se puede correr igual cada mañana en D+1. Spark ML no aporta acá: no hay etiquetas de anomalías
+reales para entrenar ni medir un clasificador, y un clustering sobre seis features agregaría un
+modelo sin una pregunta que lo justifique. Una regla sobre la serie agregada responde Q6.
+
+Consecuencias. El 36,3% de las filas, los primeros días de cada serie, queda sin puntuar. Un día sin
+uso no tiene fila en Gold, así que la historia son los días con uso y no se rellena con ceros: el
+score responde si el día es raro comparado con los días en que el servicio se usó. Sin etiquetas, la
+calidad del método se mide por cuántos días marca y por los ejemplos, no por precision ni recall.
 
 ## D13. Carga batch: registro de ingestados, y el dedupe por clave va en Silver
 
