@@ -21,6 +21,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | D11 | Modelo query-first de tablas en Cassandra | Abierta |
 | D12 | Método y umbral de detección de anomalías | Abierta |
 | D13 | Carga batch: registro de ingestados, y el dedupe por clave va en Silver | Aceptada |
+| D14 | Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino | Aceptada |
 
 ## D1. Un único esquema explícito que cubre las dos versiones de evento
 
@@ -307,3 +308,47 @@ elige una fila sobre otra con una regla de negocio, cosa que el diseño reserva 
 Consecuencias. Una re-ejecución no escribe nada en Bronze y lo deja registrado en el log. El
 registro se escribe al final del paso: si la corrida se corta entre la escritura de Bronze y la del
 registro, la siguiente vuelve a cargar esos archivos, y la copia la absorbe el dedupe de Silver.
+
+## D14. Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino
+
+Contexto. El diseño (§6.3) fija `processingTime="1 minute"`. Con ese trigger la query no termina
+nunca, y para un pipeline que se corre de punta a punta, se re-ejecuta para probar idempotencia y se
+muestra en una demo, hace falta un trigger que procese lo que hay en Landing y pare.
+
+Decisión. `STREAM_TRIGGER=available_now` es el valor por defecto: la query consume todos los
+archivos pendientes en micro-batches de `maxFilesPerTrigger` (10 archivos, 3.600 eventos) y se
+detiene. `STREAM_TRIGGER=processing_time` deja la misma query corriendo con
+`processingTime="1 minute"`, que es el modo continuo del diseño. La lógica no cambia entre los dos.
+
+Hay dos queries sobre la misma fuente, cada una con su `queryName` y su checkpoint propio:
+`bronze_usage_events` y `quarantine_usage_events_parse`. Una falla de parseo se clasifica como
+`parse_malformed_json` si no se pudo leer ningún campo, o como `parse_type_mismatch` si algún campo
+llegó con el tipo equivocado (por ejemplo, un `timestamp` que no es fecha).
+
+Una fila que parsea pero llega sin `event_id` no se puede deduplicar por `event_id`, porque los
+nulos se agrupan entre sí. La clave del dedupe es entonces `event_id` o, si falta, un hash del
+contenido de la fila. Así colapsan las copias idénticas y sobreviven las filas distintas, hasta que
+Silver las manda a Quarantine por `event_id_null`.
+
+Exactly-once en Bronze. La fuente es re-leíble (archivos en un directorio que nadie modifica), el
+checkpoint guarda qué archivos entraron en cada batch y el sink de archivos confirma cada batch en
+su log `_spark_metadata`. Un batch que se corta a mitad se rehace entero, y los lectores solo ven lo
+confirmado. Hacia Cassandra la garantía es el upsert por la clave del mart (D8).
+
+Qué rompe un checkpoint. Cambiar la fuente o la ruta de salida de una query, cambiar las columnas
+del dedupe o la columna del watermark, o renombrar la query sobre el mismo checkpoint. El
+procedimiento es el mismo en todos los casos: `make reset-stream` borra los dos checkpoints y sus
+salidas, y la próxima corrida reprocesa desde Landing. Cuesta poco porque Landing es inmutable y
+Bronze se puede reconstruir (§8.2 del diseño). Cambiar `maxFilesPerTrigger` o el trigger no rompe
+nada.
+
+Alternativas. Una sola query con `foreachBatch` que escriba Bronze y Quarantine comparte el
+checkpoint y pierde la garantía del sink de archivos: un reintento del batch escribiría dos veces
+salvo que la escritura se haga idempotente a mano. Kafka, Delta, las Declarative Pipelines, el
+Real-Time Mode y `transformWithState` quedan fuera del stack de esta entrega.
+
+Consecuencias. Con `availableNow` las 43.200 claves entran en el estado del dedupe en menos de un
+minuto, todas dentro de la hora del watermark, así que el estado llega a 43.200 filas. Es el peor
+caso, acotado por los eventos que llegan en una hora. La corrida `make stream-state-demo`, con un
+watermark de 2 segundos, muestra que el estado se libera sin descartar eventos (evidencia en
+`evidence/entrega-2/`).
