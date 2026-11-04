@@ -8,7 +8,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 
-from . import bronze_batch, bronze_stream
+from . import bronze_batch, bronze_stream, silver
 from .config import Config
 from .errors import PipelineError
 from .runlog import RunSummary, new_run_id, setup_logging
@@ -39,6 +39,7 @@ STAGES = {
     "check": stage_check,
     "bronze-batch": bronze_batch.run,
     "bronze-stream": bronze_stream.run,
+    "silver": silver.run,
 }
 DEFAULT_ORDER = list(STAGES)
 

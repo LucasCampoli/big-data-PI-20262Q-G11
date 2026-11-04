@@ -1,0 +1,3 @@
+touch_id,org_id,campaign,channel,timestamp,clicked,converted
+mkt_fixture01,org_fixture01,webinar_finops,email,2025-07-01,False,True
+mkt_fixture02,org_fixture02,genai_launch,ads,2025-07-02,True,True

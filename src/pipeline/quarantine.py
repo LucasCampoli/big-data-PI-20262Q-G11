@@ -26,6 +26,6 @@ def shape(df: DataFrame, entity: str, rule: Column, raw: Column, run_id: str, ts
     ).withColumn("quarantine_date", F.to_date("quarantined_ts"))
 
 
-def raw_json(df: DataFrame, columns: list) -> Column:
+def raw_json(columns: list) -> Column:
     """The row as it arrived in Bronze, so a reviewer sees the original values, not repairs."""
     return F.to_json(F.struct(*[F.col(c) for c in columns]))

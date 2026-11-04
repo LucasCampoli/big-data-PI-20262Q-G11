@@ -22,6 +22,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | D12 | Método y umbral de detección de anomalías | Abierta |
 | D13 | Carga batch: registro de ingestados, y el dedupe por clave va en Silver | Aceptada |
 | D14 | Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino | Aceptada |
+| D15 | Quarantine en cuatro tablas, una por escritor | Aceptada |
 
 ## D1. Un único esquema explícito que cubre las dos versiones de evento
 
@@ -242,7 +243,7 @@ por eso la conciliación se chequea por organización y día y no sobre el total
 ## D10. Las muestras de quarantine salen de fixtures en la entrega 2
 
 Contexto. Después de D6 y D7 ningún registro real queda rechazado, con lo cual el camino de escritura
-a Quarantine, la columna `dq_rule` y la separación entre filas que pasan y filas rechazadas no tienen
+a Quarantine, la columna `rule_name` y la separación entre filas que pasan y filas rechazadas no tienen
 entrada.
 
 Decisión. La entrega 2 agrega un conjunto chico de fixtures sintéticos: un registro por regla de
@@ -255,8 +256,10 @@ Alternativas. Inyectar filas malas en Landing rompe D8 y corrompe todas las base
 Esperar datos malos reales entrega el camino sin haberlo ejecutado nunca. Relajar las reglas para que
 algunas filas reales se rechacen es ajustar las reglas a la prueba, y D6 midió lo que eso cuesta.
 
-Consecuencias. Los fixtures van a ser datos de prueba. No entran nunca a `data/landing/` ni se cuentan
-en un perfil o en un mart. La regla más difícil de ejercitar sin ellos es la del `value` que no
+Consecuencias. Los fixtures son datos de prueba y viven en `tests/fixtures/landing/`, con el mismo
+layout que Landing: `make fixtures` corre el pipeline con `DATA_LANDING` apuntando ahí y un lake
+propio en `datalake/_fixtures/`. No entran nunca a `data/landing/` ni se cuentan en un perfil o en
+un mart. La regla más difícil de ejercitar sin ellos es la del `value` que no
 castea, que además es la que depende de `try_cast` en lugar de `cast`: ver D2.
 
 ## D11. Modelo query-first de tablas en Cassandra. Abierta
@@ -352,3 +355,33 @@ minuto, todas dentro de la hora del watermark, así que el estado llega a 43.200
 caso, acotado por los eventos que llegan en una hora. La corrida `make stream-state-demo`, con un
 watermark de 2 segundos, muestra que el estado se libera sin descartar eventos (evidencia en
 `evidence/entrega-2/`).
+
+## D15. Quarantine en cuatro tablas, una por escritor
+
+Contexto. Quarantine recibe filas de tres lugares: el streaming de eventos, la carga batch de los
+CSV y las reglas de Silver. El sink de archivos de un stream es dueño de su directorio: escribe un
+log `_spark_metadata` y los lectores ignoran cualquier archivo que no figure ahí, así que un writer
+batch no puede compartir esa carpeta. Además, las violaciones de reglas se derivan de Bronze igual
+que Silver, y se tienen que reconstruir con él.
+
+Decisión. Todas las tablas comparten las columnas `entity`, `rule_name`, `raw_record`,
+`source_file`, `quarantined_ts` y `run_id`, y particionan por `quarantine_date`.
+
+| Tabla | Escribe | Modo |
+| :--- | :--- | :--- |
+| `quarantine/usage_events_parse` | query de streaming, fallas de parseo | append, checkpoint propio |
+| `quarantine/masters_parse` | carga batch, fallas de parseo de los CSV | append, protegida por el registro de ingestados |
+| `quarantine/usage_events_rules` | Silver, reglas de rechazo de eventos | se reconstruye entera en cada corrida |
+| `quarantine/masters_rules` | Silver, reglas de rechazo de maestros | se reconstruye entera en cada corrida |
+
+`raw_record` guarda la línea cruda cuando el parseo falló, y la fila de Bronze en JSON cuando falló
+una regla. Así se revisa lo que llegó y no lo que quedó después de una reparación. Las reglas de
+eventos se evalúan en orden y una fila lleva solo la primera que rompe.
+
+Alternativas. Una sola tabla con una columna `stage` obliga a mezclar append y reconstrucción sobre
+el mismo directorio, y choca con el sink del stream. Reconstruir las tablas de reglas con dynamic
+partition overwrite dejaría la copia del día anterior en su partición `quarantine_date`: por eso esas
+dos tablas se sobrescriben enteras.
+
+Consecuencias. Para medir O3 hay que sumar las cuatro tablas. La retención de 180 días aplica a las
+dos tablas de append; las de reglas siempre reflejan el Bronze actual.

@@ -3,7 +3,7 @@ PY ?= .venv/bin/python
 export PYTHONPATH := src
 RUN := $(PY) -m pipeline.run
 
-.PHONY: setup check run bronze stream stream-state-demo silver gold serve test reset reset-stream
+.PHONY: setup check run bronze stream stream-state-demo silver gold serve fixtures test reset reset-stream
 
 setup:            ## create .venv, install pinned dependencies, create config/pipeline.env
 	python3 -m venv .venv
@@ -36,3 +36,11 @@ stream-state-demo: ## same stream with a 2 s watermark in a scratch lake: state 
 reset-stream:     ## new checkpoints: drop both streaming queries' state and outputs, reprocess from Landing
 	rm -rf datalake/_checkpoints/bronze_usage_events datalake/_checkpoints/quarantine_usage_events_parse \
 	       datalake/bronze/usage_events datalake/quarantine/usage_events_parse
+
+silver:           ## rebuild Silver and the rule Quarantine from Bronze
+	$(RUN) silver
+
+fixtures:         ## the pipeline over the synthetic fixtures (tests/fixtures/landing) in a separate lake
+	rm -rf datalake/_fixtures logs/fixtures
+	DATA_LANDING=tests/fixtures/landing DATALAKE_ROOT=datalake/_fixtures LOG_DIR=logs/fixtures \
+	SERVING_TARGET=none $(RUN) bronze-batch bronze-stream silver

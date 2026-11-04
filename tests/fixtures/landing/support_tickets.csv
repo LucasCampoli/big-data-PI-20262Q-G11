@@ -1,0 +1,5 @@
+ticket_id,org_id,category,severity,created_at,resolved_at,csat,sla_breached
+tkt_fixture01,org_fixture01,billing,critical,2025-07-01,2025-07-03,4.0,False
+tkt_fixture02,org_fixture01,performance,high,2025-07-05,2025-07-02,3.0,True
+tkt_fixture03,org_fixture02,security,low,2025-07-06,,7.0,False
+tkt_fixture04,org_fixture02,security,low,yesterday,,3.0,False

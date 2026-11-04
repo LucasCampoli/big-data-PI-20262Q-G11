@@ -1,0 +1,4 @@
+resource_id,org_id,service,region,created_at,state,tags_json
+res_fixture01,org_fixture01,compute,us-east,2025-05-03,running,"[""env:test""]"
+res_fixture02,org_fixture02,storage,eu-west,2025-05-04,stopped,
+res_fixture03,org_fixture01,genai,us-east,2025-05-03,running,
