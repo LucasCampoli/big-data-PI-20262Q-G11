@@ -58,6 +58,8 @@ def build_session(cfg: Config, app_name: str) -> SparkSession:
         # Event logs feed the execution sheet: jobs, stages, tasks and shuffle bytes per run.
         .config("spark.eventLog.enabled", "true")
         .config("spark.eventLog.dir", events_dir.as_uri())
+        .config("spark.eventLog.compress", "false")
+        .config("spark.eventLog.rolling.enabled", "false")
         .config("spark.ui.showConsoleProgress", "false")
         .config("spark.sql.streaming.numRecentProgressUpdates", "1000")
         # WSL resolves the hostname to a loopback alias; local mode only needs localhost.

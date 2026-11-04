@@ -79,6 +79,9 @@ def main(argv=None) -> int:
         summary.set("spark_app_id", spark.sparkContext.applicationId)
         ctx = Context(cfg, run_id, spark)
         for name in stages:
+            # The job group tags every Spark job with its pipeline stage in the event log, which
+            # is what the execution profile groups by.
+            spark.sparkContext.setJobGroup(name, f"pipeline stage {name}")
             with summary.stage(name) as metrics:
                 STAGES[name](ctx, metrics)
         status = "ok"

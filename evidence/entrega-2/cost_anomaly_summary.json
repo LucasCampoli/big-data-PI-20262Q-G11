@@ -1,0 +1,120 @@
+{
+  "rows": 11050,
+  "scored_rows": 7043,
+  "by_method": {
+    "insufficient_history": 4007,
+    "mad": 7043
+  },
+  "threshold": 3.5,
+  "flagged": 180,
+  "flagged_by_direction": {
+    "spike": 138,
+    "drop": 42
+  },
+  "flagged_pct_of_scored": 2.56,
+  "orgs_with_flags": 69,
+  "top": [
+    {
+      "org_id": "org_okep7y6w",
+      "usage_date": "2025-08-07",
+      "service": "compute",
+      "daily_cost_usd": 191.8968,
+      "median_cost": 11.2716,
+      "mad_cost": 1.1439,
+      "anomaly_score": 106.5055,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_41ibljh7",
+      "usage_date": "2025-08-12",
+      "service": "networking",
+      "daily_cost_usd": 19.3869,
+      "median_cost": 1.3049,
+      "mad_cost": 0.3459,
+      "anomaly_score": 35.2595,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_g8sbi4q2",
+      "usage_date": "2025-08-05",
+      "service": "database",
+      "daily_cost_usd": 142.947,
+      "median_cost": 9.2192,
+      "mad_cost": 3.1226,
+      "anomaly_score": 28.8865,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_874frhoc",
+      "usage_date": "2025-07-29",
+      "service": "storage",
+      "daily_cost_usd": 50.1847,
+      "median_cost": 3.6692,
+      "mad_cost": 1.1355,
+      "anomaly_score": 27.6308,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_cvs4f8cg",
+      "usage_date": "2025-08-05",
+      "service": "genai",
+      "daily_cost_usd": 222.5863,
+      "median_cost": 17.2141,
+      "mad_cost": 5.1104,
+      "anomaly_score": 27.1065,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_x7eedtjv",
+      "usage_date": "2025-08-23",
+      "service": "compute",
+      "daily_cost_usd": 211.2481,
+      "median_cost": 12.8014,
+      "mad_cost": 4.9476,
+      "anomaly_score": 27.054,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_5935a0l7",
+      "usage_date": "2025-08-26",
+      "service": "networking",
+      "daily_cost_usd": 27.9664,
+      "median_cost": 2.2778,
+      "mad_cost": 0.7476,
+      "anomaly_score": 23.1768,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_9t84azyt",
+      "usage_date": "2025-08-23",
+      "service": "database",
+      "daily_cost_usd": 147.5435,
+      "median_cost": 12.4082,
+      "mad_cost": 3.9745,
+      "anomaly_score": 22.9337,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_pht0hl9x",
+      "usage_date": "2025-08-25",
+      "service": "analytics",
+      "daily_cost_usd": 257.042,
+      "median_cost": 18.5127,
+      "mad_cost": 7.194,
+      "anomaly_score": 22.3642,
+      "anomaly_direction": "spike"
+    },
+    {
+      "org_id": "org_c11ertj5",
+      "usage_date": "2025-08-31",
+      "service": "compute",
+      "daily_cost_usd": 170.0038,
+      "median_cost": 12.7141,
+      "mad_cost": 4.7843,
+      "anomaly_score": 22.175,
+      "anomaly_direction": "spike"
+    }
+  ],
+  "window_days": 28,
+  "min_history": 14
+}

@@ -1,0 +1,246 @@
+{
+  "run_id": "20261104T231721Z-649d15",
+  "started_utc": "2026-11-04T23:17:21+00:00",
+  "git_commit": "0fbd2dc-dirty",
+  "requested_stages": [
+    "check",
+    "bronze-batch",
+    "bronze-stream",
+    "silver",
+    "gold",
+    "anomalies",
+    "serving"
+  ],
+  "config": {
+    "landing": "data/landing",
+    "datalake": "datalake",
+    "logs": "logs",
+    "evidence": "evidence/entrega-2",
+    "java_home": "/usr/lib/jvm/java-21-openjdk-amd64",
+    "spark_master": "local[4]",
+    "driver_memory": "2g",
+    "shuffle_partitions": 8,
+    "files_per_partition": 1,
+    "stream_max_files_per_trigger": 10,
+    "stream_trigger": "available_now",
+    "stream_processing_time": "1 minute",
+    "stream_watermark": "1 hour",
+    "serving_target": "cassandra",
+    "cassandra_hosts": [
+      "127.0.0.1"
+    ],
+    "cassandra_port": 9042,
+    "cassandra_keyspace": "cloud_analytics",
+    "cassandra_username": "",
+    "cassandra_password": "<unset>",
+    "cassandra_consistency": "LOCAL_QUORUM",
+    "astra_bundle": "",
+    "astra_token": "<unset>",
+    "anomaly_threshold": 3.5,
+    "anomaly_window_days": 28,
+    "anomaly_min_history": 14,
+    "pii_hash_salt": "<unset>"
+  },
+  "stages": [
+    {
+      "stage": "check",
+      "status": "ok",
+      "metrics": {
+        "java": "openjdk version \"21.0.12.1\" 2026-08-18",
+        "landing": "<repo>/data/landing",
+        "master_files": 7,
+        "event_parts": 120,
+        "spark": "4.2.0"
+      },
+      "seconds": 0.05
+    },
+    {
+      "stage": "bronze-batch",
+      "status": "ok",
+      "metrics": {
+        "customers_orgs": {
+          "status": "skipped_registered"
+        },
+        "users": {
+          "status": "skipped_registered"
+        },
+        "resources": {
+          "status": "skipped_registered"
+        },
+        "support_tickets": {
+          "status": "skipped_registered"
+        },
+        "marketing_touches": {
+          "status": "skipped_registered"
+        },
+        "nps_surveys": {
+          "status": "skipped_registered"
+        },
+        "billing_monthly": {
+          "status": "skipped_registered"
+        },
+        "files_ingested": 0,
+        "files_skipped": 7
+      },
+      "seconds": 4.62
+    },
+    {
+      "stage": "bronze-stream",
+      "status": "ok",
+      "metrics": {
+        "bronze_usage_events": {
+          "batches": 1,
+          "batches_with_data": 0,
+          "input_rows": 0,
+          "rows_dropped_by_watermark": 0,
+          "max_state_rows": 0,
+          "state_rows_removed": 0
+        },
+        "quarantine_usage_events_parse": {
+          "batches": 1,
+          "batches_with_data": 0,
+          "input_rows": 0,
+          "rows_dropped_by_watermark": 0,
+          "max_state_rows": 0,
+          "state_rows_removed": 0
+        },
+        "progress_file": "20261104T231721Z-649d15_stream_progress.jsonl"
+      },
+      "seconds": 2.04
+    },
+    {
+      "stage": "silver",
+      "status": "ok",
+      "metrics": {
+        "customers_orgs": {
+          "rows": 80,
+          "nps_score_invalid": 1,
+          "quarantined": 0
+        },
+        "users": {
+          "rows": 800,
+          "last_login_before_created": 232,
+          "created_before_org_signup": 249,
+          "quarantined": 0
+        },
+        "resources": {
+          "rows": 400,
+          "quarantined": 0
+        },
+        "support_tickets": {
+          "rows": 1000,
+          "csat_invalid": 40,
+          "quarantined": 0
+        },
+        "marketing_touches": {
+          "rows": 1500,
+          "converted_without_click": 96,
+          "quarantined": 0
+        },
+        "nps_surveys": {
+          "rows": 92,
+          "nps_score_invalid": 0,
+          "quarantined": 0
+        },
+        "billing_monthly": {
+          "rows": 240,
+          "fx_overridden": 160,
+          "credits_imputed": 137,
+          "subtotal_negative": 13,
+          "quarantined": 0
+        },
+        "usage_events": {
+          "bronze_rows": 43200,
+          "quarantined_rows": 0,
+          "bronze_cost": 147433.9778000001,
+          "quarantined_cost": 0.0,
+          "silver_rows": 43200,
+          "unit_imputed": 2075,
+          "value_null": 877,
+          "cost_anomaly_flag": 211,
+          "value_without_unit": 0,
+          "distinct_event_id": 43200,
+          "event_id_null": 0,
+          "event_dates": 60,
+          "duplicates_removed": 0,
+          "quarantined_by_rule": {},
+          "quarantined_cost_pct": 0.0,
+          "quarantined_rows_pct": 0.0
+        }
+      },
+      "seconds": 21.05
+    },
+    {
+      "stage": "gold",
+      "status": "ok",
+      "metrics": {
+        "org_daily_usage_by_service": {
+          "gold_rows": 11050,
+          "silver_grain_keys": 11050,
+          "null_keys": 0,
+          "events_in_gold": 43200,
+          "silver_rows": 43200,
+          "org_days": 4580,
+          "max_abs_diff_usd": 0.0,
+          "org_days_over_tolerance": 0,
+          "tolerance_usd": 0.01,
+          "passed": true,
+          "failures": []
+        }
+      },
+      "seconds": 4.44
+    },
+    {
+      "stage": "anomalies",
+      "status": "ok",
+      "metrics": {
+        "cost_anomaly_mart": {
+          "rows": 11050,
+          "scored_rows": 7043,
+          "by_method": {
+            "insufficient_history": 4007,
+            "mad": 7043
+          },
+          "threshold": 3.5,
+          "flagged": 180,
+          "flagged_by_direction": {
+            "spike": 138,
+            "drop": 42
+          },
+          "flagged_pct_of_scored": 2.56,
+          "orgs_with_flags": 69,
+          "window_days": 28,
+          "min_history": 14
+        }
+      },
+      "seconds": 5.84
+    },
+    {
+      "stage": "serving",
+      "status": "ok",
+      "metrics": {
+        "org_daily_usage_by_service": {
+          "organizations": 80,
+          "gold_rows": 11050,
+          "cassandra_rows": 11050,
+          "mismatches": [],
+          "passed": true,
+          "rows_written": 11050
+        },
+        "cost_anomalies_by_org": {
+          "organizations": 80,
+          "gold_rows": 11050,
+          "cassandra_rows": 11050,
+          "mismatches": [],
+          "passed": true,
+          "rows_written": 11050
+        },
+        "target": "cassandra"
+      },
+      "seconds": 6.45
+    }
+  ],
+  "status": "ok",
+  "spark_app_id": "local-1793834246807",
+  "finished_utc": "2026-11-04T23:18:12+00:00"
+}

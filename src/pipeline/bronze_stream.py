@@ -80,7 +80,10 @@ def bronze_frame(events, watermark: str):
             .withColumn("_dedupe_key", dedupe_key())
             .withWatermark("ingest_ts", watermark)
             .dropDuplicatesWithinWatermark(["_dedupe_key"])
-            .drop("_dedupe_key"))
+            .drop("_dedupe_key")
+            # The dedupe state is split in shuffle partitions; without this each micro-batch
+            # would write one small file per state partition instead of one file (design §5.1).
+            .coalesce(1))
 
 
 def quarantine_frame(events, run_id: str):

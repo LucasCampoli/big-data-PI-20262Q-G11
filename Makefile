@@ -3,7 +3,7 @@ PY ?= .venv/bin/python
 export PYTHONPATH := src
 RUN := $(PY) -m pipeline.run
 
-.PHONY: setup check run bronze stream stream-state-demo silver gold serve queries cqlsh cassandra-up cassandra-down fixtures test reset reset-stream
+.PHONY: setup check run bronze stream stream-state-demo silver gold serve queries cqlsh cassandra-up cassandra-down fixtures test reset reset-stream reset-serving evidence rerun-evidence
 
 setup:            ## create .venv, install pinned dependencies, create config/pipeline.env
 	python3 -m venv .venv
@@ -70,3 +70,18 @@ queries:          ## Q1, Q2 and Q6 through the driver and through cqlsh, saved t
 
 cqlsh:            ## interactive cqlsh in the container
 	$(COMPOSE) exec cassandra cqlsh
+
+reset-serving:    ## drop the Cassandra keyspace; the next make serve recreates it empty
+	$(CQLSH) -e "DROP KEYSPACE IF EXISTS cloud_analytics;"
+
+evidence:         ## regenerate the reports in evidence/entrega-2 from the lake, the logs and Cassandra
+	$(PY) -m pipeline.evidence report
+
+rerun-evidence:   ## from scratch: the full pipeline twice in a row, counts after each, every report
+	$(MAKE) reset reset-serving
+	$(MAKE) run
+	$(PY) -m pipeline.evidence snapshot run_1
+	$(MAKE) run
+	$(PY) -m pipeline.evidence snapshot run_2
+	$(MAKE) stream-state-demo fixtures queries
+	$(PY) -m pipeline.evidence report

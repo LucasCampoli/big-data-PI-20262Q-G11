@@ -1,0 +1,35 @@
+2026-11-04T23:17:21 INFO    20261104T231721Z-649d15 pipeline: run 20261104T231721Z-649d15, stages ['check', 'bronze-batch', 'bronze-stream', 'silver', 'gold', 'anomalies', 'serving'], log <repo>/logs/20261104T231721Z-649d15.log
+2026-11-04T23:17:21 INFO    20261104T231721Z-649d15 pipeline: config {'landing': 'data/landing', 'datalake': 'datalake', 'logs': 'logs', 'evidence': 'evidence/entrega-2', 'java_home': '/usr/lib/jvm/java-21-openjdk-amd64', 'spark_master': 'local[4]', 'driver_memory': '2g', 'shuffle_partitions': 8, 'files_per_partition': 1, 'stream_max_files_per_trigger': 10, 'stream_trigger': 'available_now', 'stream_processing_time': '1 minute', 'stream_watermark': '1 hour', 'serving_target': 'cassandra', 'cassandra_hosts': ['127.0.0.1'], 'cassandra_port': 9042, 'cassandra_keyspace': 'cloud_analytics', 'cassandra_username': '', 'cassandra_password': '<unset>', 'cassandra_consistency': 'LOCAL_QUORUM', 'astra_bundle': '', 'astra_token': '<unset>', 'anomaly_threshold': 3.5, 'anomaly_window_days': 28, 'anomaly_min_history': 14, 'pii_hash_salt': '<unset>'}
+2026-11-04T23:17:30 INFO    20261104T231721Z-649d15 pipeline.spark: spark 4.2.0, master local[4], shuffle partitions 8, app id local-1793834246807
+2026-11-04T23:17:30 INFO    20261104T231721Z-649d15 pipeline: stage check: start
+2026-11-04T23:17:30 INFO    20261104T231721Z-649d15 pipeline: stage check: ok in 0.1 s
+2026-11-04T23:17:30 INFO    20261104T231721Z-649d15 pipeline: stage bronze-batch: start
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: customers_orgs.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: users.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: resources.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: support_tickets.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: marketing_touches.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: nps_surveys.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline.bronze_batch: billing_monthly.csv already in the ingest registry; skipped
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline: stage bronze-batch: ok in 4.6 s
+2026-11-04T23:17:35 INFO    20261104T231721Z-649d15 pipeline: stage bronze-stream: start
+2026-11-04T23:17:37 INFO    20261104T231721Z-649d15 pipeline.bronze_stream: query bronze_usage_events started (id bab22165-b180-4826-b894-a7f19f51b874)
+2026-11-04T23:17:37 INFO    20261104T231721Z-649d15 pipeline.bronze_stream: query quarantine_usage_events_parse started (id 172185b8-e382-4ced-9704-05907a3365e4)
+2026-11-04T23:17:37 INFO    20261104T231721Z-649d15 pipeline.bronze_stream: streaming summary {'bronze_usage_events': {'batches': 1, 'batches_with_data': 0, 'input_rows': 0, 'rows_dropped_by_watermark': 0, 'max_state_rows': 0, 'state_rows_removed': 0}, 'quarantine_usage_events_parse': {'batches': 1, 'batches_with_data': 0, 'input_rows': 0, 'rows_dropped_by_watermark': 0, 'max_state_rows': 0, 'state_rows_removed': 0}, 'progress_file': '20261104T231721Z-649d15_stream_progress.jsonl'}
+2026-11-04T23:17:37 INFO    20261104T231721Z-649d15 pipeline: stage bronze-stream: ok in 2.0 s
+2026-11-04T23:17:37 INFO    20261104T231721Z-649d15 pipeline: stage silver: start
+2026-11-04T23:17:49 WARNING 20261104T231721Z-649d15 pipeline.silver: PII_HASH_SALT is not set: users.email_hash is an unsalted sha256
+2026-11-04T23:17:56 INFO    20261104T231721Z-649d15 pipeline.silver: silver usage_events {'bronze_rows': 43200, 'quarantined_rows': 0, 'bronze_cost': 147433.9778000001, 'quarantined_cost': 0.0, 'silver_rows': 43200, 'unit_imputed': 2075, 'value_null': 877, 'cost_anomaly_flag': 211, 'value_without_unit': 0, 'distinct_event_id': 43200, 'event_id_null': 0, 'event_dates': 60, 'duplicates_removed': 0, 'quarantined_by_rule': {}, 'quarantined_cost_pct': 0.0, 'quarantined_rows_pct': 0.0}
+2026-11-04T23:17:56 INFO    20261104T231721Z-649d15 pipeline: stage silver: ok in 21.1 s
+2026-11-04T23:17:56 INFO    20261104T231721Z-649d15 pipeline: stage gold: start
+2026-11-04T23:17:59 INFO    20261104T231721Z-649d15 pipeline.gold: gold reconciliation {'gold_rows': 11050, 'silver_grain_keys': 11050, 'null_keys': 0, 'events_in_gold': 43200, 'silver_rows': 43200, 'org_days': 4580, 'max_abs_diff_usd': 0.0, 'org_days_over_tolerance': 0, 'tolerance_usd': 0.01, 'passed': True, 'failures': []}
+2026-11-04T23:18:01 INFO    20261104T231721Z-649d15 pipeline: stage gold: ok in 4.4 s
+2026-11-04T23:18:01 INFO    20261104T231721Z-649d15 pipeline: stage anomalies: start
+2026-11-04T23:18:05 INFO    20261104T231721Z-649d15 pipeline.anomalies: cost_anomaly_mart {'rows': 11050, 'scored_rows': 7043, 'by_method': {'insufficient_history': 4007, 'mad': 7043}, 'threshold': 3.5, 'flagged': 180, 'flagged_by_direction': {'spike': 138, 'drop': 42}, 'flagged_pct_of_scored': 2.56, 'orgs_with_flags': 69, 'window_days': 28, 'min_history': 14}
+2026-11-04T23:18:05 INFO    20261104T231721Z-649d15 pipeline: stage anomalies: ok in 5.8 s
+2026-11-04T23:18:05 INFO    20261104T231721Z-649d15 pipeline: stage serving: start
+2026-11-04T23:18:05 WARNING 20261104T231721Z-649d15 cassandra.cluster: Cluster.__init__ called with contact_points specified, but load-balancing policies are not specified in some ExecutionProfiles. In the next major version, this will raise an error; please specify a load-balancing policy. (contact_points = ['127.0.0.1'], EPs without explicit LBPs = ('EXEC_PROFILE_DEFAULT',))
+2026-11-04T23:18:09 INFO    20261104T231721Z-649d15 pipeline.serving: cloud_analytics.org_daily_usage_by_service: 11050 rows upserted, {'organizations': 80, 'gold_rows': 11050, 'cassandra_rows': 11050, 'mismatches': [], 'passed': True, 'rows_written': 11050}
+2026-11-04T23:18:11 INFO    20261104T231721Z-649d15 pipeline.serving: cloud_analytics.cost_anomalies_by_org: 11050 rows upserted, {'organizations': 80, 'gold_rows': 11050, 'cassandra_rows': 11050, 'mismatches': [], 'passed': True, 'rows_written': 11050}
+2026-11-04T23:18:11 INFO    20261104T231721Z-649d15 pipeline: stage serving: ok in 6.5 s
+2026-11-04T23:18:12 INFO    20261104T231721Z-649d15 pipeline: run 20261104T231721Z-649d15 finished with status ok, summary <repo>/logs/20261104T231721Z-649d15.json
