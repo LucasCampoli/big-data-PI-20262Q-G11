@@ -20,6 +20,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | D10 | Las muestras de quarantine salen de fixtures en la entrega 2 | Aceptada |
 | D11 | Modelo query-first de tablas en Cassandra | Abierta |
 | D12 | Método y umbral de detección de anomalías | Abierta |
+| D13 | Carga batch: registro de ingestados, y el dedupe por clave va en Silver | Aceptada |
 
 ## D1. Un único esquema explícito que cubre las dos versiones de evento
 
@@ -285,3 +286,24 @@ Por qué lo postergamos. La elección necesita la distribución de la serie diar
 incrementos crudos. Por ahora preferimos MAD porque una cola larga como esta, p99 en 16,69 contra un
 máximo de 317,43, casi no lo mueve, pero eso hay que verificarlo contra datos de Gold en lugar de
 darlo por sentado. Se decide en la entrega 2 junto con `cost_anomaly_mart`.
+
+## D13. Carga batch: registro de ingestados, y el dedupe por clave va en Silver
+
+Contexto. La consigna pide deduplicar los maestros en Bronze "cuando aplique", y el diseño (§5) dice
+que Bronze conserva el grano de la fuente sin filtrar. Los 7 CSV no tienen claves repetidas, así que
+los duplicados posibles son los de una re-ejecución que vuelve a leer el mismo archivo.
+
+Decisión. Bronze es solo append y el registro `datalake/_registry/ingested_files` decide qué entra:
+un archivo cuyo nombre ya figura ahí se saltea. El registro guarda además el sha256, el tamaño y los
+conteos de cada archivo. Si un archivo registrado cambia de contenido, la corrida lo informa como
+warning y no lo carga, porque Landing es inmutable (D8). Bronze cuenta las claves naturales
+repetidas de cada archivo y las deja pasar. El dedupe por clave lo hace Silver, quedándose con la
+fila del `ingest_ts` más reciente.
+
+Alternativas. Sobrescribir cada maestro en Bronze en cada corrida borra la historia de snapshots,
+que es lo único que permitiría reconstruir un cambio de un maestro. Deduplicar por clave en Bronze
+elige una fila sobre otra con una regla de negocio, cosa que el diseño reserva para Silver.
+
+Consecuencias. Una re-ejecución no escribe nada en Bronze y lo deja registrado en el log. El
+registro se escribe al final del paso: si la corrida se corta entre la escritura de Bronze y la del
+registro, la siguiente vuelve a cargar esos archivos, y la copia la absorbe el dedupe de Silver.

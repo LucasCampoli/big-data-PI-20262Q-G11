@@ -59,6 +59,9 @@ def build_session(cfg: Config, app_name: str) -> SparkSession:
         .config("spark.eventLog.enabled", "true")
         .config("spark.eventLog.dir", events_dir.as_uri())
         .config("spark.ui.showConsoleProgress", "false")
+        # WSL resolves the hostname to a loopback alias; local mode only needs localhost.
+        .config("spark.driver.host", "127.0.0.1")
+        .config("spark.driver.bindAddress", "127.0.0.1")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
