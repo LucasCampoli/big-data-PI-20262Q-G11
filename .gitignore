@@ -185,11 +185,16 @@ docs/entrega-1.html
 
 # Run logs kept as delivery evidence
 !evidence/*.log
+!evidence/entrega-2/
+!evidence/entrega-2/**
 
 # Local secrets and generated lake outputs
 .env
 *.pem
-lake/
+config/pipeline.env
+secure-connect-*.zip
+datalake/
+logs/
 checkpoints/
 **/_checkpoints/
 

@@ -80,7 +80,7 @@ commiteados se pueden reproducir desde los datos de Landing.
 commiteados. Para probar sobre la muestra, `DATA_LANDING` tiene que ser una ruta absoluta a
 `data/sample/`, y después hay que descartar los perfiles reescritos.
 
-Copiar `config/paths.env.example` si hace falta sobreescribir una ruta local. No commitear `.env` ni
+Copiar `config/pipeline.env.example` a `config/pipeline.env` si hace falta sobreescribir una ruta local. No commitear `.env` ni
 credenciales.
 
 ## Convenciones
