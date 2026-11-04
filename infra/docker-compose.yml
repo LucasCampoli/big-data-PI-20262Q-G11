@@ -1,0 +1,28 @@
+# Local Cassandra for the serving layer. Run from the repo root: make cassandra-up
+name: cloud-provider-analytics
+
+services:
+  cassandra:
+    image: cassandra:5.0
+    container_name: cpa-cassandra
+    ports:
+      - "9042:9042"
+    environment:
+      # One node on a laptop: a small heap is enough for a few thousand rows.
+      MAX_HEAP_SIZE: 1G
+      HEAP_NEWSIZE: 256M
+      CASSANDRA_CLUSTER_NAME: cpa-local
+      CASSANDRA_DC: dc1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+      - ../cql:/cql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  cassandra-data:

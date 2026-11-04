@@ -18,11 +18,12 @@ diseño: [`docs/design.md`](docs/design.md).
 | D8 | Landing inmutable, idempotencia por sobreescritura y upsert | Aceptada |
 | D9 | Convertir moneda por factura, y forzar USD a 1,0 | Aceptada |
 | D10 | Las muestras de quarantine salen de fixtures en la entrega 2 | Aceptada |
-| D11 | Modelo query-first de tablas en Cassandra | Abierta |
+| D11 | Modelo query-first en Cassandra: una partición por organización, días como clustering | Aceptada |
 | D12 | Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5 | Aceptada |
 | D13 | Carga batch: registro de ingestados, y el dedupe por clave va en Silver | Aceptada |
 | D14 | Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino | Aceptada |
 | D15 | Quarantine en cuatro tablas, una por escritor | Aceptada |
+| D16 | Carga a Cassandra con el driver de Python desde `foreachPartition`, local y AstraDB | Aceptada |
 
 ## D1. Un único esquema explícito que cubre las dos versiones de evento
 
@@ -264,20 +265,48 @@ propio en `datalake/_fixtures/`. No entran nunca a `data/landing/` ni se cuentan
 un mart. La regla más difícil de ejercitar sin ellos es la del `value` que no
 castea, que además es la que depende de `try_cast` en lugar de `cast`: ver D2.
 
-## D11. Modelo query-first de tablas en Cassandra. Abierta
+## D11. Modelo query-first en Cassandra: una partición por organización, días como clustering
 
-Lo que ya está decidido. Una tabla por forma de consulta, con la partition key elegida para que cada
-consulta toque exactamente una partición, sin índices secundarios y sin `ALLOW FILTERING`. Q1 y Q2
-comparten `org_daily_usage_by_service`.
+Contexto. Q1 pide costo y requests diarios por servicio de una organización en un rango de fechas.
+Q2 pide el top-N de servicios por costo de una organización en los últimos 14 días. Los conteos
+reales de Gold: 11.050 filas en 80 organizaciones, entre 33 y 286 filas por organización en 60
+días, y como mucho 6 filas por organización y día, una por servicio.
 
-Lo que está abierto. Si `(org_id)` sola alcanza como partition key o si hace falta un bucket por mes
-para acotar el crecimiento de la partición; el orden de las clustering columns para el top-N de Q2; si
-`cost_anomaly_mart` es su propia tabla o un conjunto de columnas sobre el mart diario. Y si Q3, Q4 y
-Q5 son por organización o globales: la consigna solo lo aclara para Q1 y Q2, y una consulta global no
-entra por una partición `(org_id)`, sino que necesita su propia tabla particionada por fecha.
+Decisión.
 
-Por qué lo postergamos. Depende de los conteos de filas de los marts, que existen recién cuando corre
-Gold. Se decide antes de escribir el esquema de Cassandra en la entrega 2.
+| Consulta | Tabla | Partition key | Clustering columns | Lectura |
+| :--- | :--- | :--- | :--- | :--- |
+| Q1 | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service ASC` | un rango de `usage_date` dentro de una partición |
+| Q2 | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service ASC` | los últimos 14 días de una partición (84 filas como máximo), suma y orden en el cliente |
+| Q6 | `cost_anomalies_by_org` | `org_id` | `usage_date DESC`, `service ASC` | un rango de días de una partición, el cliente se queda con `is_anomaly` |
+
+Ninguna consulta usa índices secundarios ni `ALLOW FILTERING`, y cada una toca una sola partición.
+Q2 suma en el cliente porque CQL solo agrupa por un prefijo de la primary key y no ordena por una
+columna regular. Sobre 84 filas eso no cuesta nada. `cost_anomaly_mart` va a su propia tabla, con
+todos los días puntuados y no solo los marcados: si cambia el corte, la recarga sobrescribe las
+mismas claves y no quedan filas viejas.
+
+Tamaño de partición. La partición crece con los días y no con el tamaño de la organización, porque
+el grano tope es 6 servicios por día: 2.190 filas por año en el peor caso, unas 300 KB con filas
+de unos 150 bytes, lejos de los 100 MB que se usan como límite práctico. Diez años serían unas
+22.000 filas. No hace falta un bucket por mes, y agregarlo obligaría a Q1 y Q2 a leer una o dos
+particiones según dónde caiga el rango.
+
+Replicación y consistencia. Local, un nodo en el datacenter `dc1` con `NetworkTopologyStrategy` y
+factor 1 (`cql/00_keyspace.cql`). En producción sería `{'dc1': 3}` y `LOCAL_QUORUM` para leer y
+escribir: dos de tres réplicas, así que una lectura siempre ve la última carga (2 + 2 > 3) y el
+sistema tolera la caída de un nodo. El pipeline escribe con `LOCAL_QUORUM` (configurable con
+`CASSANDRA_CONSISTENCY`), que con un nodo es una réplica. En AstraDB la replicación la fija el
+servicio y las escrituras tienen que ser `LOCAL_QUORUM`.
+
+Alternativas. Una tabla con `service` antes que `usage_date` en el clustering permitiría agrupar
+Q2 por servicio en el servidor, pero el rango de fechas de Q1 dejaría de ser contiguo y habría que
+mantener dos copias del mart. Particionar por `(org_id, mes)` acota algo que ya está acotado.
+Particionar por fecha concentraría todas las escrituras del batch diario en una partición caliente.
+
+Consecuencias. Q3, Q4 y Q5 siguen supuestas por organización, como dice §8.1 del diseño. Si alguna
+resulta global, va a necesitar su propia tabla particionada por fecha. 80 organizaciones son 80
+particiones repartidas por hash, así que la carga queda pareja entre nodos.
 
 ## D12. Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5
 
@@ -419,3 +448,31 @@ dos tablas se sobrescriben enteras.
 
 Consecuencias. Para medir O3 hay que sumar las cuatro tablas. La retención de 180 días aplica a las
 dos tablas de append; las de reglas siempre reflejan el Bronze actual.
+
+## D16. Carga a Cassandra con el driver de Python desde `foreachPartition`, local y AstraDB
+
+Contexto. El conector oficial (`apache/cassandra-spark-connector`) sigue en la release 3.5.1,
+compilada para Spark 3.5, y no tiene versión para Spark 4. El driver de Python
+`cassandra-driver` 3.30.1 funciona con Python 3.12 y soporta el secure connect bundle de AstraDB.
+La consigna permite cargar con conector o con driver (§4.4).
+
+Decisión. Mantenemos PySpark 4.2.0 y cargamos con el driver desde `foreachPartition`: cada tarea
+abre una sesión, prepara un `INSERT` y escribe sus filas con `execute_concurrent_with_args`. Antes
+se reparticiona por `org_id`, así cada tarea escribe particiones de Cassandra completas. Un
+`INSERT` es un upsert por primary key, así que recargar el mismo mart deja las mismas filas. Al
+terminar, la carga compara organización por organización cantidad de filas y costo contra Gold, y
+si no coinciden la corrida falla.
+
+El destino principal es Cassandra 5.0 en Docker (`infra/docker-compose.yml`). AstraDB es el segundo
+destino, con el mismo código: `SERVING_TARGET=astra` cambia solo la conexión (bundle y token por
+variables de entorno, fuera del repo) y saltea el `CREATE KEYSPACE`, que AstraDB no admite. Las
+consultas se corren con el driver (`python -m pipeline.queries`) y con cqlsh dentro del
+contenedor, desde los mismos archivos `cql/q*.cql`.
+
+Alternativas. Bajar a PySpark 3.5 para usar el conector obligaba a instalar un JDK 17 y a cambiar la
+versión con la que se generó la evidencia de la entrega 1. Escribir con `foreachBatch` desde el
+stream mezclaría el serving con la ingesta, y en D3 el serving sale del batch.
+
+Consecuencias. Un `None` se escribe como null, lo que en Cassandra deja un tombstone. Con miles de
+filas es despreciable, y es lo correcto: un día sin requests medidos tiene que leerse null y no 0.
+La carga no usa el particionado por token del conector, cosa que a esta escala no importa.

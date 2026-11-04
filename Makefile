@@ -3,7 +3,7 @@ PY ?= .venv/bin/python
 export PYTHONPATH := src
 RUN := $(PY) -m pipeline.run
 
-.PHONY: setup check run bronze stream stream-state-demo silver gold serve fixtures test reset reset-stream
+.PHONY: setup check run bronze stream stream-state-demo silver gold serve queries cqlsh cassandra-up cassandra-down fixtures test reset reset-stream
 
 setup:            ## create .venv, install pinned dependencies, create config/pipeline.env
 	python3 -m venv .venv
@@ -46,4 +46,27 @@ gold:             ## daily FinOps mart (reconciled against Silver) and the anoma
 fixtures:         ## the pipeline over the synthetic fixtures (tests/fixtures/landing) in a separate lake
 	rm -rf datalake/_fixtures logs/fixtures
 	DATA_LANDING=tests/fixtures/landing DATALAKE_ROOT=datalake/_fixtures LOG_DIR=logs/fixtures \
-	$(RUN) bronze-batch bronze-stream silver gold anomalies
+	SERVING_TARGET=none $(RUN) bronze-batch bronze-stream silver gold anomalies
+
+COMPOSE := docker compose -f infra/docker-compose.yml
+CQLSH := $(COMPOSE) exec -T cassandra cqlsh
+EVIDENCE := evidence/entrega-2
+
+cassandra-up:     ## start the local Cassandra and wait until it answers CQL
+	$(COMPOSE) up -d --wait
+
+cassandra-down:   ## stop it (the data volume is kept; add -v by hand to drop it)
+	$(COMPOSE) down
+
+serve:            ## create keyspace and tables if missing, upsert the Gold marts, verify per org
+	$(RUN) serving
+
+queries:          ## Q1, Q2 and Q6 through the driver and through cqlsh, saved to evidence/entrega-2
+	$(PY) -m pipeline.queries
+	@mkdir -p $(EVIDENCE)
+	for q in q1_daily_cost_by_service q2_top_services_14d q6_cost_anomalies; do \
+	  { echo "$$ cqlsh -f cql/$$q.cql"; $(CQLSH) -f /cql/$$q.cql; } > $(EVIDENCE)/serving_$${q%%_*}_cqlsh.txt; \
+	  cat $(EVIDENCE)/serving_$${q%%_*}_cqlsh.txt; done
+
+cqlsh:            ## interactive cqlsh in the container
+	$(COMPOSE) exec cassandra cqlsh

@@ -1,0 +1,37 @@
+Q1. Daily cost and requests per service, one organization, date range
+target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-04T23:04:44+00:00
+
+SELECT usage_date, service, daily_cost_usd, requests, events
+FROM cloud_analytics.org_daily_usage_by_service
+WHERE org_id = 'org_okep7y6w'
+  AND usage_date >= '2025-08-01' AND usage_date <= '2025-08-07';
+
+usage_date | service    | daily_cost_usd | requests | events
+-----------+------------+----------------+----------+-------
+2025-08-07 | compute    | 191.8968       | 212.0000 | 3     
+2025-08-07 | networking | 3.8985         | 378.0000 | 6     
+2025-08-07 | storage    | 8.2649         | 345.0000 | 9     
+2025-08-06 | compute    | 11.8077        | 121.0000 | 3     
+2025-08-06 | database   | 6.0661         | 129.0000 | 3     
+2025-08-06 | genai      | 10.6357        | 111.0000 | 3     
+2025-08-06 | networking | 0.3809         |          | 3     
+2025-08-06 | storage    | 2.8427         |          | 3     
+2025-08-05 | genai      | 36.4233        | 248.0000 | 3     
+2025-08-05 | networking | 18.6546        | 219.0000 | 3     
+2025-08-05 | storage    | 2.8950         | 122.0000 | 3     
+2025-08-04 | compute    | 11.7858        | 140.0000 | 3     
+2025-08-04 | database   | 11.3571        | 107.0000 | 3     
+2025-08-04 | genai      | 0.1240         |          | 3     
+2025-08-04 | networking | 1.4563         | 124.0000 | 3     
+2025-08-03 | compute    | 8.5327         | 118.0000 | 3     
+2025-08-03 | networking | 3.5354         | 340.0000 | 6     
+2025-08-03 | storage    | 6.6122         | 339.0000 | 6     
+2025-08-02 | compute    | 18.6802        | 247.0000 | 3     
+2025-08-02 | networking | 2.3992         | 246.0000 | 3     
+2025-08-02 | storage    | 4.8782         | 247.0000 | 3     
+2025-08-01 | compute    | 0.4156         |          | 3     
+2025-08-01 | database   | 0.4115         |          | 3     
+2025-08-01 | genai      | 41.4889        | 271.0000 | 3     
+2025-08-01 | storage    | 0.7000         |          | 3     
+
+(25 rows)
