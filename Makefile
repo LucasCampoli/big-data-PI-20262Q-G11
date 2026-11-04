@@ -8,7 +8,8 @@ RUN := $(PY) -m pipeline.run
 setup:            ## create .venv, install pinned dependencies, create config/pipeline.env
 	python3 -m venv .venv
 	.venv/bin/pip install -q -r requirements.txt
-	test -f config/pipeline.env || cp config/pipeline.env.example config/pipeline.env
+	test -f config/pipeline.env || { cp config/pipeline.env.example config/pipeline.env; \
+	  sed -i "s/^PII_HASH_SALT=$$/PII_HASH_SALT=$$(python3 -c 'import secrets; print(secrets.token_hex(16))')/" config/pipeline.env; }
 
 check:            ## Java, Spark and Landing sanity check
 	$(RUN) check

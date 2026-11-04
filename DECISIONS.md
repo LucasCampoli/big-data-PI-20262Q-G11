@@ -24,6 +24,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | D14 | Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino | Aceptada |
 | D15 | Quarantine en cuatro tablas, una por escritor | Aceptada |
 | D16 | Carga a Cassandra con el driver de Python desde `foreachPartition`, local y AstraDB | Aceptada |
+| D17 | `users.email` se reemplaza en Silver por un hash con sal y el dominio | Aceptada |
 
 ## D1. Un único esquema explícito que cubre las dos versiones de evento
 
@@ -476,3 +477,24 @@ stream mezclaría el serving con la ingesta, y en D3 el serving sale del batch.
 Consecuencias. Un `None` se escribe como null, lo que en Cassandra deja un tombstone. Con miles de
 filas es despreciable, y es lo correcto: un día sin requests medidos tiene que leerse null y no 0.
 La carga no usa el particionado por token del conector, cosa que a esta escala no importa.
+
+## D17. `users.email` se reemplaza en Silver por un hash con sal y el dominio
+
+Contexto. `users.email` es el único dato personal del dataset, y ninguna de las consultas Q1 a Q6
+lo necesita. Lo que sí hace falta es contar y deduplicar usuarios por organización.
+
+Decisión. Bronze conserva el email tal como llega, porque es la copia fiel de la fuente y su acceso
+está restringido a ingesta. Silver lo reemplaza por `email_hash = sha256(sal + lower(trim(email)))`
+y `email_domain`, y descarta la columna original. La sal sale de `PII_HASH_SALT`, que `make setup`
+genera al azar en `config/pipeline.env`, fuera de git. Si falta, la corrida sigue y lo deja como
+warning en el log.
+
+Alternativas. Enmascarar el email (`u***@example.com`) deja ver una parte de la dirección y no sirve
+como clave. Un sha256 sin sal se revierte con una lista de emails candidatos, y en este dataset
+todos tienen la forma `<user_id>@example.com`. Cifrar con una clave permite volver al email, cosa
+que nadie aguas abajo necesita, y agrega una clave más que administrar.
+
+Consecuencias. El hash es estable mientras no cambie la sal: cambiarla cambia todos los
+`email_hash` de Silver en la siguiente reconstrucción, que es completa (D8), así que no quedan
+mezclados. Quarantine puede traer el email en `raw_record` si una fila de `users` no parsea, y por
+eso tiene el mismo acceso restringido que Bronze (`docs/governance.md`).

@@ -22,6 +22,8 @@ log = logging.getLogger("pipeline.silver")
 
 EVENT_SOURCE_COLUMNS = [f.name for f in USAGE_EVENT_SCHEMA.fields]
 
+O3_LIMIT_PCT = 1.0  # design §1.3
+
 # Repair and flag columns the masters carry; their counts go to the run summary.
 MASTER_FLAGS = ["nps_score_invalid", "csat_invalid", "fx_overridden", "credits_imputed",
                 "subtotal_negative", "last_login_before_created", "created_before_org_signup",
@@ -216,6 +218,12 @@ def build_events(ctx, orgs: DataFrame, resources_df: DataFrame, metrics):
     m["quarantined_cost"] = m["quarantined_cost"] or 0.0
     m["quarantined_cost_pct"] = round(100 * m["quarantined_cost"] / m["bronze_cost"], 4) if m["bronze_cost"] else 0.0
     m["quarantined_rows_pct"] = round(100 * m["quarantined_rows"] / m["bronze_rows"], 4) if m["bronze_rows"] else 0.0
+    # O3: Quarantine stays an exception, measured in rows and in cost. A breach does not stop the
+    # run (the rows are safe in Quarantine) but it is logged and recorded for whoever reviews it.
+    m["o3_breached"] = m["quarantined_rows_pct"] > O3_LIMIT_PCT or m["quarantined_cost_pct"] > O3_LIMIT_PCT
+    if m["o3_breached"]:
+        log.warning("O3 breached: %.2f%% of events and %.2f%% of cost quarantined (limit %s%%)",
+                    m["quarantined_rows_pct"], m["quarantined_cost_pct"], O3_LIMIT_PCT)
     metrics["usage_events"] = m
     log.info("silver usage_events %s", m)
 

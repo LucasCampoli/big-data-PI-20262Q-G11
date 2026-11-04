@@ -126,6 +126,43 @@ def inventory(spark, cfg: Config) -> str:
             + f"\n\nTotal: {total:,} bytes in {sum(r['files'] for r in rows)} files.\n")
 
 
+COLUMN_NOTES = {
+    "ingest_ts": "when the row entered Bronze (one value per run or micro-batch)",
+    "ingest_date": "date of ingest_ts, Bronze partition for events",
+    "source_file": "Landing file the row came from",
+    "processed_ts": "when Silver rebuilt the row",
+    "computed_ts": "when Gold computed the row",
+    "run_id": "pipeline run that wrote the row, key of logs/<run_id>.log",
+    "unit_imputed": "unit derived from metric (D6)",
+    "cost_anomaly_flag": "cost_usd_increment below -0.01 (D6)",
+    "dq_status": "passed for every Silver row; quarantine rows live in the quarantine zone",
+    "value_double": "value cast with try_cast; null when missing (D2)",
+    "rule_name": "first rule the row broke",
+    "raw_record": "the line or Bronze row as it arrived",
+    "email_hash": "sha256 of salt + normalized email; the raw email stays in Bronze (governance)",
+    "email_domain": "domain part of the email",
+    "fx_overridden": "USD invoice whose rate was forced to 1.0 (D9)",
+    "exchange_rate_applied": "rate used for the USD amounts",
+    "revenue_usd": "(subtotal - credits + taxes) x exchange_rate_applied",
+    "anomaly_score": "modified z-score against the trailing 28 days (D12)",
+}
+
+
+def data_dictionary(spark, cfg: Config) -> str:
+    text = (header("Data dictionary") + "Schema of every table as stored in Parquet, read back from the lake. "
+            "Partition columns are marked. Business descriptions of the source columns are in "
+            "`docs/design.md` §3; technical and derived columns are described here.\n\n")
+    for zone, entity, path in lake.tables(cfg.datalake):
+        if not lake.exists(path):
+            continue
+        part_cols = {d.name.split("=")[0] for d in path.iterdir() if d.is_dir() and "=" in d.name}
+        fields = lake.read(spark, path).schema.fields
+        rows = [{"column": f.name + (" (partition)" if f.name in part_cols else ""),
+                 "type": f.dataType.simpleString(), "note": COLUMN_NOTES.get(f.name, "")} for f in fields]
+        text += f"## {zone}/{entity}\n\n" + md_table(rows, ["column", "type", "note"]) + "\n\n"
+    return text
+
+
 def quarantine_report(spark, cfg: Config) -> str:
     text = header("Quarantine samples")
     for title, root in (("Real Landing (`data/landing/`)", cfg.datalake),
@@ -369,6 +406,7 @@ def report(spark, cfg: Config):
     runs = copy_run_logs(cfg)
     files = {
         "lake_inventory.md": inventory(spark, cfg),
+        "data_dictionary.md": data_dictionary(spark, cfg),
         "quarantine_samples.md": quarantine_report(spark, cfg),
         "stream_bronze.md": stream_report(spark, cfg),
         "silver_quality.md": quality_report(cfg),
