@@ -182,6 +182,7 @@ cython_debug/
 
 # Generated delivery artifact: rebuild with scripts/build_entrega_html.py
 docs/entrega-1.html
+docs/entrega-2.html
 
 # Run logs kept as delivery evidence
 !evidence/*.log

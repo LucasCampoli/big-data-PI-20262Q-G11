@@ -1,25 +1,36 @@
 """Build one printable HTML from the delivery documents.
 
-Run from the repo root: python scripts/build_entrega_html.py
-Then open docs/entrega-1.html in a browser and print to PDF at A4.
+Run from the repo root: python scripts/build_entrega_html.py [root] [delivery]
+delivery is 1 (default) or 2. Then open docs/entrega-<n>.html in a browser and print to PDF at A4.
 """
-import base64, re, sys
+import re, sys
 from pathlib import Path
 import markdown
 
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+DELIVERY = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 DOCS = ROOT / "docs"
-PARTS = [
-    ("", DOCS / "design.md"),
-    ("appendix", DOCS / "appendix.md"),
-    ("decisions", ROOT / "DECISIONS.md"),
-]
+DELIVERIES = {
+    1: {"svg": "architecture_v1.svg", "parts": [
+        ("", DOCS / "design.md"),
+        ("appendix", DOCS / "appendix.md"),
+        ("decisions", ROOT / "DECISIONS.md"),
+    ]},
+    2: {"svg": "architecture_v2.svg", "parts": [
+        ("", DOCS / "entrega-2.md"),
+        ("governance", DOCS / "governance.md"),
+        ("execution", DOCS / "execution_sheet.md"),
+        ("decisions", ROOT / "DECISIONS.md"),
+    ]},
+}
+SVG = DELIVERIES[DELIVERY]["svg"]
+PARTS = DELIVERIES[DELIVERY]["parts"]
 
 def inline_svg(html: str) -> str:
-    """Embed architecture_v1.svg so the file prints standalone."""
-    svg = (DOCS / "architecture_v1.svg").read_text()
+    """Embed the architecture SVG so the file prints standalone."""
+    svg = (DOCS / SVG).read_text()
     svg = re.sub(r'\swidth="100%"', '', svg, count=1)
-    return re.sub(r'<img[^>]*architecture_v1\.svg[^>]*>',
+    return re.sub(rf'<img[^>]*{re.escape(SVG)}[^>]*>',
                   f'<figure class="arch">{svg}</figure>', html, count=1)
 
 def decisions_index_only(md: str) -> str:
@@ -48,7 +59,7 @@ for anchor, path in PARTS:
 
 html = f"""<!doctype html>
 <meta charset="utf-8">
-<title>Cloud Provider Analytics, entrega 1, grupo 11</title>
+<title>Cloud Provider Analytics, entrega {DELIVERY}, grupo 11</title>
 <style>
   @page {{ size: A4; margin: 16mm 15mm; }}
   html {{ font-size: 10pt; }}
@@ -78,6 +89,6 @@ html = f"""<!doctype html>
 </style>
 {inline_svg("".join(body))}
 """
-out = DOCS / "entrega-1.html"
+out = DOCS / f"entrega-{DELIVERY}.html"
 out.write_text(html)
 print(f"wrote {out} ({len(html)//1024} KB)")

@@ -22,14 +22,14 @@ de Spark: cada `count`, cada escritura y cada lectura de métricas es un job.
 
 | Etapa | Qué hace | Trigger | Segundos | Jobs | Tareas | Shuffle escrito |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| `bronze-batch` | 7 CSV a Bronze, registro de ingestados | por corrida | 17,6 | 64 | 64 | 51 KB |
-| `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 12,8 | 25 | 109 | 4.569 KB |
-| `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 15,0 | 63 | 141 | 6.174 KB |
-| `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 4,0 | 20 | 126 | 964 KB |
-| `anomalies` | `cost_anomaly_mart` | por corrida | 5,5 | 21 | 166 | 1.202 KB |
-| `serving` | upsert de los dos marts en Cassandra y verificación | por corrida | 5,9 | 12 | 148 | 1.056 KB |
+| `bronze-batch` | 7 CSV a Bronze, registro de ingestados | por corrida | 9,0 | 64 | 64 | 51 KB |
+| `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 6,4 | 24 | 108 | 4.570 KB |
+| `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 8,1 | 63 | 141 | 6.176 KB |
+| `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 2,1 | 20 | 126 | 963 KB |
+| `anomalies` | `cost_anomaly_mart` | por corrida | 2,8 | 21 | 166 | 1.202 KB |
+| `serving` | upsert de los dos marts en Cassandra y verificación | por corrida | 4,4 | 12 | 148 | 1.056 KB |
 
-La corrida completa tarda 61 segundos y la re-ejecución 44: el stream no lee nada y la carga batch
+La corrida completa tarda unos 33 segundos y la re-ejecución unos 24 (los tiempos varían entre corridas y con la carga de la máquina): el stream no lee nada y la carga batch
 saltea los 7 CSV registrados. Silver, Gold y la carga se rehacen enteros en las dos (D8).
 
 El shuffle más grande es el de Silver: el dedupe por `event_id` es una ventana particionada por
@@ -43,7 +43,7 @@ y 1,6 TB de Parquet por día.
 
 | Job | Cola | Executors | Container por executor | Paralelismo |
 | :--- | :--- | :--- | :--- | :--- |
-| Streaming a Bronze | `streaming`, 30% garantizado, aplicación de larga duración | 10 executors × 4 cores, sin dynamic allocation | 8 GB + 10% de overhead, redondeado a 9 GB y 4 vcores | unos 150 MB/s de JSON, 9 GB por micro-batch de un minuto |
+| Streaming a Bronze | `streaming`, 30% de capacidad mínima, aplicación de larga duración | 10 executors × 4 cores, sin dynamic allocation | 8 GB + 10% de overhead, redondeado a 9 GB y 4 vcores | unos 150 MB/s de JSON, 9 GB por micro-batch de un minuto |
 | Silver diario | `batch`, 70%, elástica hasta 100% de noche | dynamic allocation hasta 100 × 5 cores | 16 GB + overhead, 18 GB y 5 vcores | 12.500 splits de 128 MB, unas 25 rondas de 500 tareas; `shuffle.partitions` cerca de 8.000 para unos 200 MB por partición en el dedupe |
 | Gold diario | `batch` | los del job de Silver | igual | 300.000 claves por día después del combiner; 200 particiones de shuffle alcanzan |
 | Carga a Cassandra | `batch` | 10 × 2 cores | 4 GB | 300.000 upserts por día, acotado por el cluster de Cassandra y no por Spark |
@@ -51,7 +51,7 @@ y 1,6 TB de Parquet por día.
 En modo cluster, cada aplicación pide además un ApplicationMaster que hospeda al driver: unos 4 GB
 y 1 vcore. YARN asigna containers en múltiplos de `yarn.scheduler.minimum-allocation-mb`, por eso
 cada executor pide su memoria más el overhead redondeado hacia arriba. Con el Capacity Scheduler, la
-cola `streaming` tiene capacidad garantizada para que el batch nocturno nunca le saque recursos al
+cola `streaming` tiene una capacidad mínima reservada para que el batch nocturno nunca le saque recursos al
 stream, y la cola `batch` puede usar lo que el stream no ocupa entre las 00:00 y las 06:00 UTC, que es
 la ventana de O1.
 

@@ -21,14 +21,14 @@ Results [12]: [org_id#3788, event_date#3813, service#3790, sum#3873, sum#3874, s
 
 (3) Exchange
 Input [12]: [org_id#3788, event_date#3813, service#3790, sum#3873, sum#3874, sum#3875, sum#3876, sum#3877L, sum#3878, count#3879L, sum#3880L, sum#3881L]
-Arguments: hashpartitioning(org_id#3788, event_date#3813, service#3790, 8), ENSURE_REQUIREMENTS, [plan_id=2237]
+Arguments: hashpartitioning(org_id#3788, event_date#3813, service#3790, 8), ENSURE_REQUIREMENTS, [plan_id=2265]
 
 (4) HashAggregate
 Input [12]: [org_id#3788, event_date#3813, service#3790, sum#3873, sum#3874, sum#3875, sum#3876, sum#3877L, sum#3878, count#3879L, sum#3880L, sum#3881L]
 Keys [3]: [org_id#3788, event_date#3813, service#3790]
 Functions [9]: [sum(cost_usd_increment#3795), sum(requests#3797), sum(cpu_hours#3798), sum(storage_gb_hours#3799), sum(genai_tokens#3800L), sum(carbon_kg#3801), count(1), sum(cast(cost_anomaly_flag#3807 as int)), sum(cast(unit_imputed#3806 as int))]
 Aggregate Attributes [9]: [sum(cost_usd_increment#3795)#3853, sum(requests#3797)#3854, sum(cpu_hours#3798)#3855, sum(storage_gb_hours#3799)#3856, sum(genai_tokens#3800L)#3857L, sum(carbon_kg#3801)#3858, count(1)#3852L, sum(cast(cost_anomaly_flag#3807 as int))#3859L, sum(cast(unit_imputed#3806 as int))#3860L]
-Results [14]: [org_id#3788, event_date#3813 AS usage_date#3814, service#3790, round(sum(cost_usd_increment#3795)#3853, 4) AS daily_cost_usd#3815, sum(requests#3797)#3854 AS requests#3816, sum(cpu_hours#3798)#3855 AS cpu_hours#3817, sum(storage_gb_hours#3799)#3856 AS storage_gb_hours#3818, sum(genai_tokens#3800L)#3857L AS genai_tokens#3819L, sum(carbon_kg#3801)#3858 AS carbon_kg#3820, count(1)#3852L AS events#3821L, sum(cast(cost_anomaly_flag#3807 as int))#3859L AS negative_cost_events#3822L, sum(cast(unit_imputed#3806 as int))#3860L AS unit_imputed_events#3823L, 2026-11-04 23:17:30 AS computed_ts#3862, 20261104T231721Z-649d15 AS run_id#3863]
+Results [14]: [org_id#3788, event_date#3813 AS usage_date#3814, service#3790, round(sum(cost_usd_increment#3795)#3853, 4) AS daily_cost_usd#3815, sum(requests#3797)#3854 AS requests#3816, sum(cpu_hours#3798)#3855 AS cpu_hours#3817, sum(storage_gb_hours#3799)#3856 AS storage_gb_hours#3818, sum(genai_tokens#3800L)#3857L AS genai_tokens#3819L, sum(carbon_kg#3801)#3858 AS carbon_kg#3820, count(1)#3852L AS events#3821L, sum(cast(cost_anomaly_flag#3807 as int))#3859L AS negative_cost_events#3822L, sum(cast(unit_imputed#3806 as int))#3860L AS unit_imputed_events#3823L, 2026-11-05 01:58:47 AS computed_ts#3862, 20261105T015842Z-bb0aea AS run_id#3863]
 
 (5) AdaptiveSparkPlan
 Output [14]: [org_id#3788, usage_date#3814, service#3790, daily_cost_usd#3815, requests#3816, cpu_hours#3817, storage_gb_hours#3818, genai_tokens#3819L, carbon_kg#3820, events#3821L, negative_cost_events#3822L, unit_imputed_events#3823L, computed_ts#3862, run_id#3863]

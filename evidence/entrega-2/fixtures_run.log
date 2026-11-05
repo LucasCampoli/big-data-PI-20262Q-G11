@@ -1,31 +1,31 @@
-2026-11-04T23:19:13 INFO    20261104T231913Z-4c6fe2 pipeline: run 20261104T231913Z-4c6fe2, stages ['bronze-batch', 'bronze-stream', 'silver', 'gold', 'anomalies'], log <repo>/logs/fixtures/20261104T231913Z-4c6fe2.log
-2026-11-04T23:19:13 INFO    20261104T231913Z-4c6fe2 pipeline: config {'landing': 'tests/fixtures/landing', 'datalake': 'datalake/_fixtures', 'logs': 'logs/fixtures', 'evidence': 'evidence/entrega-2', 'java_home': '/usr/lib/jvm/java-21-openjdk-amd64', 'spark_master': 'local[4]', 'driver_memory': '2g', 'shuffle_partitions': 8, 'files_per_partition': 1, 'stream_max_files_per_trigger': 10, 'stream_trigger': 'available_now', 'stream_processing_time': '1 minute', 'stream_watermark': '1 hour', 'serving_target': 'none', 'cassandra_hosts': ['127.0.0.1'], 'cassandra_port': 9042, 'cassandra_keyspace': 'cloud_analytics', 'cassandra_username': '', 'cassandra_password': '<unset>', 'cassandra_consistency': 'LOCAL_QUORUM', 'astra_bundle': '', 'astra_token': '<unset>', 'anomaly_threshold': 3.5, 'anomaly_window_days': 28, 'anomaly_min_history': 14, 'pii_hash_salt': '<unset>'}
-2026-11-04T23:19:21 INFO    20261104T231913Z-4c6fe2 pipeline.spark: spark 4.2.0, master local[4], shuffle partitions 8, app id local-1793834357968
-2026-11-04T23:19:22 INFO    20261104T231913Z-4c6fe2 pipeline: stage bronze-batch: start
-2026-11-04T23:19:29 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: customers_orgs.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:30 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: users.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:31 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: resources.csv: 3 rows to Bronze, 0 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:32 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: support_tickets.csv: 3 rows to Bronze, 1 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:33 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: marketing_touches.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:34 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: nps_surveys.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:35 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_batch: billing_monthly.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
-2026-11-04T23:19:37 INFO    20261104T231913Z-4c6fe2 pipeline: stage bronze-batch: ok in 17.2 s
-2026-11-04T23:19:37 INFO    20261104T231913Z-4c6fe2 pipeline: stage bronze-stream: start
-2026-11-04T23:19:37 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_stream: query bronze_usage_events started (id 2d9f1f24-7710-4f32-91ef-f7667ba3aca4)
-2026-11-04T23:19:38 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_stream: query quarantine_usage_events_parse started (id c6e153e3-72b7-495d-9d82-fa2a6f89b8dc)
-2026-11-04T23:19:39 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_stream: query quarantine_usage_events_parse batch 0: 16 input rows in 650 ms, state rows -, dropped by watermark -
-2026-11-04T23:19:39 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_stream: query bronze_usage_events batch 0: 16 input rows in 1499 ms, state rows 13, dropped by watermark 0
-2026-11-04T23:19:40 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_stream: streaming summary {'bronze_usage_events': {'batches': 2, 'batches_with_data': 1, 'input_rows': 16, 'rows_dropped_by_watermark': 0, 'max_state_rows': 13, 'state_rows_removed': 0}, 'quarantine_usage_events_parse': {'batches': 1, 'batches_with_data': 1, 'input_rows': 16, 'rows_dropped_by_watermark': 0, 'max_state_rows': 0, 'state_rows_removed': 0}, 'progress_file': '20261104T231913Z-4c6fe2_stream_progress.jsonl'}
-2026-11-04T23:19:40 INFO    20261104T231913Z-4c6fe2 pipeline: stage bronze-stream: ok in 2.8 s
-2026-11-04T23:19:40 INFO    20261104T231913Z-4c6fe2 pipeline: stage silver: start
-2026-11-04T23:19:40 INFO    20261104T231913Z-4c6fe2 pipeline.bronze_stream: query bronze_usage_events batch 1: 0 input rows in 599 ms, state rows 13, dropped by watermark 0
-2026-11-04T23:19:49 WARNING 20261104T231913Z-4c6fe2 pipeline.silver: PII_HASH_SALT is not set: users.email_hash is an unsalted sha256
-2026-11-04T23:19:52 INFO    20261104T231913Z-4c6fe2 pipeline.silver: silver usage_events {'bronze_rows': 13, 'quarantined_rows': 8, 'bronze_cost': 4.02, 'quarantined_cost': 3.3400000000000003, 'silver_rows': 5, 'unit_imputed': 1, 'value_null': 1, 'cost_anomaly_flag': 1, 'value_without_unit': 0, 'distinct_event_id': 5, 'event_id_null': 0, 'event_dates': 1, 'duplicates_removed': 0, 'quarantined_by_rule': {'resource_org_mismatch': 1, 'org_id_unknown': 1, 'metric_unknown': 1, 'event_id_null': 1, 'unit_contradicts_metric': 1, 'resource_id_unknown': 1, 'value_not_castable': 1, 'timestamp_unparseable': 1}, 'quarantined_cost_pct': 83.0846, 'quarantined_rows_pct': 61.5385}
-2026-11-04T23:19:52 INFO    20261104T231913Z-4c6fe2 pipeline: stage silver: ok in 12.0 s
-2026-11-04T23:19:52 INFO    20261104T231913Z-4c6fe2 pipeline: stage gold: start
-2026-11-04T23:19:53 INFO    20261104T231913Z-4c6fe2 pipeline.gold: gold reconciliation {'gold_rows': 2, 'silver_grain_keys': 2, 'null_keys': 0, 'events_in_gold': 5, 'silver_rows': 5, 'org_days': 1, 'max_abs_diff_usd': 0.0, 'org_days_over_tolerance': 0, 'tolerance_usd': 0.01, 'passed': True, 'failures': []}
-2026-11-04T23:19:54 INFO    20261104T231913Z-4c6fe2 pipeline: stage gold: ok in 2.2 s
-2026-11-04T23:19:54 INFO    20261104T231913Z-4c6fe2 pipeline: stage anomalies: start
-2026-11-04T23:19:56 INFO    20261104T231913Z-4c6fe2 pipeline.anomalies: cost_anomaly_mart {'rows': 2, 'scored_rows': 0, 'by_method': {'insufficient_history': 2}, 'threshold': 3.5, 'flagged': 0, 'flagged_by_direction': {}, 'flagged_pct_of_scored': 0.0, 'orgs_with_flags': 0, 'window_days': 28, 'min_history': 14}
-2026-11-04T23:19:56 INFO    20261104T231913Z-4c6fe2 pipeline: stage anomalies: ok in 2.5 s
-2026-11-04T23:19:57 INFO    20261104T231913Z-4c6fe2 pipeline: run 20261104T231913Z-4c6fe2 finished with status ok, summary <repo>/logs/fixtures/20261104T231913Z-4c6fe2.json
+2026-11-05T01:59:43 INFO    20261105T015943Z-1e5fca pipeline: run 20261105T015943Z-1e5fca, stages ['bronze-batch', 'bronze-stream', 'silver', 'gold', 'anomalies'], log <repo>/logs/fixtures/20261105T015943Z-1e5fca.log
+2026-11-05T01:59:43 INFO    20261105T015943Z-1e5fca pipeline: config {'landing': 'tests/fixtures/landing', 'datalake': 'datalake/_fixtures', 'logs': 'logs/fixtures', 'evidence': 'evidence/entrega-2', 'java_home': '/usr/lib/jvm/java-21-openjdk-amd64', 'spark_master': 'local[4]', 'driver_memory': '2g', 'shuffle_partitions': 8, 'files_per_partition': 1, 'stream_max_files_per_trigger': 10, 'stream_trigger': 'available_now', 'stream_processing_time': '1 minute', 'stream_watermark': '1 hour', 'serving_target': 'none', 'cassandra_hosts': ['127.0.0.1'], 'cassandra_port': 9042, 'cassandra_keyspace': 'cloud_analytics', 'cassandra_username': '', 'cassandra_password': '<unset>', 'cassandra_consistency': 'LOCAL_QUORUM', 'astra_bundle': '', 'astra_token': '<unset>', 'anomaly_threshold': 3.5, 'anomaly_window_days': 28, 'anomaly_min_history': 14, 'pii_hash_salt': '<set>'}
+2026-11-05T01:59:48 INFO    20261105T015943Z-1e5fca pipeline.spark: spark 4.2.0, master local[4], shuffle partitions 8, app id local-1793843986198
+2026-11-05T01:59:48 INFO    20261105T015943Z-1e5fca pipeline: stage bronze-batch: start
+2026-11-05T01:59:52 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: customers_orgs.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:53 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: users.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:54 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: resources.csv: 3 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:55 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: support_tickets.csv: 3 rows to Bronze, 1 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:55 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: marketing_touches.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:56 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: nps_surveys.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:56 INFO    20261105T015943Z-1e5fca pipeline.bronze_batch: billing_monthly.csv: 2 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-05T01:59:57 INFO    20261105T015943Z-1e5fca pipeline: stage bronze-batch: ok in 9.6 s
+2026-11-05T01:59:57 INFO    20261105T015943Z-1e5fca pipeline: stage bronze-stream: start
+2026-11-05T01:59:58 INFO    20261105T015943Z-1e5fca pipeline.bronze_stream: query bronze_usage_events started (id f8e60d90-e8fb-4efb-8ccf-1a13c7b27f26)
+2026-11-05T01:59:58 INFO    20261105T015943Z-1e5fca pipeline.bronze_stream: query quarantine_usage_events_parse started (id 2862118b-fbf6-40fc-a13a-b11ab0f625b2)
+2026-11-05T01:59:59 INFO    20261105T015943Z-1e5fca pipeline.bronze_stream: query quarantine_usage_events_parse batch 0: 16 input rows in 447 ms, state rows -, dropped by watermark -
+2026-11-05T01:59:59 INFO    20261105T015943Z-1e5fca pipeline.bronze_stream: query bronze_usage_events batch 0: 16 input rows in 960 ms, state rows 13, dropped by watermark 0
+2026-11-05T01:59:59 INFO    20261105T015943Z-1e5fca pipeline.bronze_stream: streaming summary {'bronze_usage_events': {'batches': 2, 'batches_with_data': 1, 'input_rows': 16, 'rows_dropped_by_watermark': 0, 'max_state_rows': 13, 'state_rows_removed': 0}, 'quarantine_usage_events_parse': {'batches': 1, 'batches_with_data': 1, 'input_rows': 16, 'rows_dropped_by_watermark': 0, 'max_state_rows': 0, 'state_rows_removed': 0}, 'progress_file': '20261105T015943Z-1e5fca_stream_progress.jsonl'}
+2026-11-05T01:59:59 INFO    20261105T015943Z-1e5fca pipeline: stage bronze-stream: ok in 1.8 s
+2026-11-05T01:59:59 INFO    20261105T015943Z-1e5fca pipeline: stage silver: start
+2026-11-05T01:59:59 INFO    20261105T015943Z-1e5fca pipeline.bronze_stream: query bronze_usage_events batch 1: 0 input rows in 417 ms, state rows 13, dropped by watermark 0
+2026-11-05T02:00:06 WARNING 20261105T015943Z-1e5fca pipeline.silver: O3 breached: 61.54% of events and 83.08% of cost quarantined (limit 1.0%)
+2026-11-05T02:00:06 INFO    20261105T015943Z-1e5fca pipeline.silver: silver usage_events {'bronze_rows': 13, 'quarantined_rows': 8, 'bronze_cost': 4.02, 'quarantined_cost': 3.3400000000000003, 'silver_rows': 5, 'unit_imputed': 1, 'value_null': 1, 'cost_anomaly_flag': 1, 'value_without_unit': 0, 'distinct_event_id': 5, 'event_id_null': 0, 'event_dates': 1, 'duplicates_removed': 0, 'quarantined_by_rule': {'resource_org_mismatch': 1, 'org_id_unknown': 1, 'metric_unknown': 1, 'event_id_null': 1, 'unit_contradicts_metric': 1, 'resource_id_unknown': 1, 'value_not_castable': 1, 'timestamp_unparseable': 1}, 'quarantined_cost_pct': 83.0846, 'quarantined_rows_pct': 61.5385, 'o3_breached': True}
+2026-11-05T02:00:06 INFO    20261105T015943Z-1e5fca pipeline: stage silver: ok in 7.2 s
+2026-11-05T02:00:06 INFO    20261105T015943Z-1e5fca pipeline: stage gold: start
+2026-11-05T02:00:06 INFO    20261105T015943Z-1e5fca pipeline.gold: gold reconciliation {'gold_rows': 2, 'silver_grain_keys': 2, 'null_keys': 0, 'events_in_gold': 5, 'silver_rows': 5, 'org_days': 1, 'max_abs_diff_usd': 0.0, 'org_days_over_tolerance': 0, 'tolerance_usd': 0.01, 'passed': True, 'failures': []}
+2026-11-05T02:00:06 INFO    20261105T015943Z-1e5fca pipeline: stage gold: ok in 1.3 s
+2026-11-05T02:00:06 INFO    20261105T015943Z-1e5fca pipeline: stage anomalies: start
+2026-11-05T02:00:07 INFO    20261105T015943Z-1e5fca pipeline.anomalies: cost_anomaly_mart {'rows': 2, 'scored_rows': 0, 'by_method': {'insufficient_history': 2}, 'threshold': 3.5, 'flagged': 0, 'flagged_by_direction': {}, 'flagged_pct_of_scored': 0.0, 'orgs_with_flags': 0, 'window_days': 28, 'min_history': 14}
+2026-11-05T02:00:07 INFO    20261105T015943Z-1e5fca pipeline: stage anomalies: ok in 1.4 s
+2026-11-05T02:00:08 INFO    20261105T015943Z-1e5fca pipeline: run 20261105T015943Z-1e5fca finished with status ok, summary <repo>/logs/fixtures/20261105T015943Z-1e5fca.json

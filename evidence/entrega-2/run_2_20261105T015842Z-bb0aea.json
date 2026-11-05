@@ -1,7 +1,7 @@
 {
-  "run_id": "20261104T231721Z-649d15",
-  "started_utc": "2026-11-04T23:17:21+00:00",
-  "git_commit": "0fbd2dc-dirty",
+  "run_id": "20261105T015842Z-bb0aea",
+  "started_utc": "2026-11-05T01:58:42+00:00",
+  "git_commit": "af95d6e-dirty",
   "requested_stages": [
     "check",
     "bronze-batch",
@@ -39,7 +39,7 @@
     "anomaly_threshold": 3.5,
     "anomaly_window_days": 28,
     "anomaly_min_history": 14,
-    "pii_hash_salt": "<unset>"
+    "pii_hash_salt": "<set>"
   },
   "stages": [
     {
@@ -52,7 +52,7 @@
         "event_parts": 120,
         "spark": "4.2.0"
       },
-      "seconds": 0.05
+      "seconds": 0.03
     },
     {
       "stage": "bronze-batch",
@@ -82,7 +82,7 @@
         "files_ingested": 0,
         "files_skipped": 7
       },
-      "seconds": 4.62
+      "seconds": 2.38
     },
     {
       "stage": "bronze-stream",
@@ -104,9 +104,9 @@
           "max_state_rows": 0,
           "state_rows_removed": 0
         },
-        "progress_file": "20261104T231721Z-649d15_stream_progress.jsonl"
+        "progress_file": "20261105T015842Z-bb0aea_stream_progress.jsonl"
       },
-      "seconds": 2.04
+      "seconds": 0.97
     },
     {
       "stage": "silver",
@@ -165,10 +165,11 @@
           "duplicates_removed": 0,
           "quarantined_by_rule": {},
           "quarantined_cost_pct": 0.0,
-          "quarantined_rows_pct": 0.0
+          "quarantined_rows_pct": 0.0,
+          "o3_breached": false
         }
       },
-      "seconds": 21.05
+      "seconds": 11.14
     },
     {
       "stage": "gold",
@@ -188,7 +189,7 @@
           "failures": []
         }
       },
-      "seconds": 4.44
+      "seconds": 2.48
     },
     {
       "stage": "anomalies",
@@ -213,7 +214,7 @@
           "min_history": 14
         }
       },
-      "seconds": 5.84
+      "seconds": 3.09
     },
     {
       "stage": "serving",
@@ -237,10 +238,10 @@
         },
         "target": "cassandra"
       },
-      "seconds": 6.45
+      "seconds": 3.55
     }
   ],
   "status": "ok",
-  "spark_app_id": "local-1793834246807",
-  "finished_utc": "2026-11-04T23:18:12+00:00"
+  "spark_app_id": "local-1793843925114",
+  "finished_utc": "2026-11-05T01:59:09+00:00"
 }

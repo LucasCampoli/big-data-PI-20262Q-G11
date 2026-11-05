@@ -50,7 +50,7 @@ fixtures:         ## the pipeline over the synthetic fixtures (tests/fixtures/la
 	SERVING_TARGET=none $(RUN) bronze-batch bronze-stream silver gold anomalies
 
 COMPOSE := docker compose -f infra/docker-compose.yml
-CQLSH := $(COMPOSE) exec -T cassandra cqlsh
+CQLSH := $(COMPOSE) exec -T cassandra cqlsh --request-timeout=120
 EVIDENCE := evidence/entrega-2
 
 cassandra-up:     ## start the local Cassandra and wait until it answers CQL

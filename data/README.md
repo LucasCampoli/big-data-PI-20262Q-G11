@@ -8,4 +8,8 @@ descomprimirlo.
 su propia copia. No commitear secretos ni credenciales.
 
 `sample/` sí se commitea: es un recorte chico de Landing con el mismo layout, para correr el notebook
-sin el dataset completo. Lo genera `../scripts/make_sample.py` y no se edita a mano.
+o el pipeline sin el dataset completo (`DATA_LANDING=data/sample make run`). Lo genera
+`../scripts/make_sample.py` y no se edita a mano.
+
+Los datos sintéticos que ejercitan Quarantine no están acá sino en `../tests/fixtures/landing/`, y
+nunca se copian a `landing/` (D10).

@@ -1,7 +1,8 @@
 # Decisiones
 
-Decisiones de diseño, con las alternativas que miramos y lo que cuesta cada una. Primero las
-aceptadas y después las dos que dejamos abiertas a propósito. Fecha: 2026-10-03.
+Decisiones de diseño, con las alternativas que miramos y lo que cuesta cada una. D1 a D10 vienen de
+la entrega 1. D11 y D12 quedaron abiertas en la entrega 1 y se cierran con los datos de Gold. D13 a
+D17 son las que trajo la implementación. Fecha: 2026-11-04.
 
 Las mediciones salen de [`evidence/landing_profile.md`](evidence/landing_profile.md). Documento de
 diseño: [`docs/design.md`](docs/design.md).
@@ -138,8 +139,9 @@ determina `unit` uno a uno sin ninguna contradicción, y otros 877 eventos tiene
 2,01% del costo.
 
 Decisión. A Quarantine van solo las contradicciones: `metric` desconocido, un `unit` que no coincide
-con su `metric`, un `value` que no castea, un `event_id` nulo, un `org_id` o `resource_id` que no
-joinea. Un campo que falta pero no es ambiguo se repara y se marca: `unit` se imputa desde
+con su `metric`, un `value` que no castea, un `event_id` nulo, un `timestamp` nulo, un `org_id` o
+`resource_id` que no joinea, y un `resource_id` que existe pero pertenece a otra organización
+(`resource_org_mismatch`), que es el mismo caso de dos claves que se contradicen. Un campo que falta pero no es ambiguo se repara y se marca: `unit` se imputa desde
 `metric` con `unit_imputed = true`. Un `value` nulo conserva su costo y aporta null, no cero, a las
 sumas de uso.
 

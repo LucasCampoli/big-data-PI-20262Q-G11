@@ -1,18 +1,39 @@
 # Evidencia
 
-Artefactos generados que respaldan lo que afirma `docs/design.md`. No se editan a mano: se regeneran
-corriendo el notebook que los produce.
+Artefactos generados que respaldan lo que afirman los documentos de cada entrega. No se editan a
+mano: se regeneran con el comando que los produce. Los reportes generados están en inglés, como el
+código; este README y los checklists los escribimos nosotros y van en español.
+
+## Entrega 1
 
 | Archivo | Contenido |
 | :--- | :--- |
-| `landing_profile.md` | Perfil completo de Landing: grano y conteo de filas por fuente, nulos, versiones de esquema de los eventos, la inconsistencia de tipo en `value`, la distribución de costos, la medición de late data, el particionado de Bronze y Silver, y la base de cada regla de calidad. |
-| `landing_source_profile.csv` | Una fila por fuente: formato, archivos, filas, columnas, clave de grano, claves duplicadas, rango de fechas. |
-| `landing_column_profile.csv` | Una fila por columna: cantidad de nulos y proporción de nulos. |
-| `landing_exploration_run.log` | Log de la última corrida del notebook: versiones, tiempo y diff contra los perfiles commiteados. Lo escribe `scripts/run_exploration.sh`. |
-| `delivery_1_checklist.md` | El checklist §9.1 y los criterios de aceptación §5.4, con dónde está cada ítem. |
+| `landing_profile.md` | perfil de Landing: grano y filas por fuente, nulos, versiones de esquema, `value` como número y como texto, costos, late data, particionado y la base de cada regla de calidad |
+| `landing_source_profile.csv`, `landing_column_profile.csv` | una fila por fuente y una por columna |
+| `landing_exploration_run.log` | log de la última corrida del notebook (`scripts/run_exploration.sh`) |
+| `delivery_1_checklist.md` | checklist §9.1 y criterios §5.4 |
 
-Los tres perfiles salen de `notebooks/01_landing_exploration.ipynb`. Están en inglés porque son
-salida del notebook, que se mantiene en inglés junto con el código; el checklist, en cambio, lo
-escribimos nosotros y va en español como el resto de la documentación.
+Los tres perfiles salen de `notebooks/01_landing_exploration.ipynb`.
 
-Las capturas y los logs de corrida de las próximas entregas también van acá.
+## Entrega 2, `entrega-2/`
+
+Todo sale de `make rerun-evidence`, que resetea el lake y el keyspace, corre el pipeline completo
+dos veces seguidas, corre el experimento de estado, los fixtures y las consultas, y regenera los
+reportes con `python -m pipeline.evidence report`.
+
+| Archivo | Contenido |
+| :--- | :--- |
+| `run_1_<run_id>.log`, `run_1_<run_id>.json` | log y resumen de la primera corrida, sobre un lake vacío |
+| `run_2_<run_id>.log`, `run_2_<run_id>.json` | lo mismo para la re-ejecución |
+| `counts_run_1.json`, `counts_run_2.json`, `idempotency.md` | filas por tabla del lake y de Cassandra después de cada corrida, y la comparación |
+| `lake_inventory.md` | rutas, filas, archivos, particiones y bytes de cada tabla |
+| `data_dictionary.md` | esquema de cada tabla leído desde el Parquet, con notas de las columnas técnicas |
+| `stream_bronze.md`, `run_*_stream_progress.jsonl`, `stream_state_demo_progress.jsonl` | progreso de cada micro-batch, el experimento con watermark de 2 s y la medición de late data |
+| `silver_quality.md` | las reglas de la consigna medidas en Silver, O3 y los flags de los maestros |
+| `quarantine_samples.md`, `fixtures_run.log` | filas en Quarantine por tabla y por regla, con una muestra cruda de cada regla |
+| `gold_marts.md`, `gold_reconciliation.json`, `gold_explain.txt`, `cost_anomaly_summary.json` | conciliación de Gold, plan físico de la agregación y resumen de anomalías |
+| `serving_q1_*.txt`, `serving_q2_*.txt`, `serving_q6_*.txt` | cada consulta por cqlsh y por el driver, con el CQL ejecutado |
+| `execution_profile.md` | jobs, stages, tareas y bytes de shuffle por etapa, desde el event log de Spark |
+| `delivery_2_checklist.md` | checklist §9.2 y criterios §6.4, en `evidence/` |
+
+En los archivos copiados de los logs, la ruta local del repo aparece como `<repo>`.

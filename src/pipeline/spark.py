@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 
 from pyspark.sql import SparkSession
 
@@ -40,6 +41,9 @@ def check_java(cfg: Config) -> str:
 
 def build_session(cfg: Config, app_name: str) -> SparkSession:
     check_java(cfg)
+    # Python workers default to the python3 on PATH; pinning them to the driver's interpreter keeps
+    # the venv's packages (the Cassandra driver among them) even when the venv is not activated.
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
     events_dir = cfg.logs / "spark-events"
     events_dir.mkdir(parents=True, exist_ok=True)
     spark = (

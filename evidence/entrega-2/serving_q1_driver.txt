@@ -1,5 +1,5 @@
 Q1. Daily cost and requests per service, one organization, date range
-target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-04T23:19:58+00:00
+target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-05T02:00:08+00:00
 
 SELECT usage_date, service, daily_cost_usd, requests, events
 FROM cloud_analytics.org_daily_usage_by_service

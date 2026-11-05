@@ -19,10 +19,11 @@ services:
       - ../cql:/cql:ro
     healthcheck:
       test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' > /dev/null"]
-      interval: 10s
-      timeout: 10s
-      retries: 30
-      start_period: 40s
+      # cqlsh itself takes 10 to 15 s to start inside the container on WSL.
+      interval: 20s
+      timeout: 40s
+      retries: 20
+      start_period: 60s
 
 volumes:
   cassandra-data:

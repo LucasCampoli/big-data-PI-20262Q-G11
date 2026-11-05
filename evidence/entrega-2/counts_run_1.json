@@ -1,7 +1,7 @@
 {
   "label": "run_1",
-  "taken_utc": "2026-11-04T23:17:20+00:00",
-  "last_full_run": "20261104T231554Z-cfb041",
+  "taken_utc": "2026-11-05T01:58:41+00:00",
+  "last_full_run": "20261105T015755Z-41ce5b",
   "lake_rows": {
     "bronze/billing_monthly": 240,
     "bronze/customers_orgs": 80,
@@ -36,7 +36,7 @@
   },
   "registry_files": 7,
   "checkpoint_commits": {
-    "bronze_usage_events": 13,
+    "bronze_usage_events": 12,
     "quarantine_usage_events_parse": 12
   }
 }
