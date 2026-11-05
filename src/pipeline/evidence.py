@@ -273,6 +273,25 @@ def quality_report(cfg: Config) -> str:
             + ".\n\n## Masters\n\n" + md_table(masters, ["entity", "rows", "quarantined"] + flag_cols) + "\n")
 
 
+def detection_text(check) -> str:
+    if not check:
+        return ""
+    cols = ["org_id", "usage_date", "service", "daily_cost_usd", "median_cost", "history_days",
+            "score_method", "anomaly_score"]
+    rows = [{"days": label, "count": check[k]["days"], "flagged": check[k]["flagged"],
+             "flagged_pct": check[k]["flagged_pct"], "not_flagged_scored": check[k]["not_flagged_scored"],
+             "not_flagged_unscored": check[k]["not_flagged_unscored"]}
+            for k, label in (("above_p99", f"daily cost above the p99 ({check['daily_cost_p99_usd']} USD)"),
+                             ("negative", "negative daily cost"))]
+    text = ("\n\n### Detection check\n\nWithout labels, the days a fixed threshold would call extreme are the "
+            "reference: how many the relative method flags, and why it leaves the rest.\n\n"
+            + md_table(rows, ["days", "count", "flagged", "flagged_pct", "not_flagged_scored", "not_flagged_unscored"]))
+    for k, label in (("above_p99", "Above the p99"), ("negative", "Negative daily cost")):
+        text += (f"\n\n{label}, flagged:\n\n" + md_table(check[k]["flagged_examples"], cols)
+                 + f"\n\n{label}, not flagged:\n\n" + md_table(check[k]["not_flagged_examples"], cols))
+    return text
+
+
 def gold_report(cfg: Config) -> str:
     runs = [s for s in summaries(cfg.logs) if stage_metrics(s, "gold")]
     if not runs:
@@ -291,7 +310,8 @@ def gold_report(cfg: Config) -> str:
     if an:
         text += ("\n## cost_anomaly_mart\n\n"
                  + md_table([{"measure": k, "value": (json.dumps(v) if isinstance(v, dict) else v)}
-                             for k, v in an.items() if k != "top"], ["measure", "value"])
+                             for k, v in an.items() if k not in ("top", "detection_check")], ["measure", "value"])
+                 + detection_text(an.get("detection_check"))
                  + "\n\nTop flagged days by |score|:\n\n"
                  + md_table(an["top"], ["org_id", "usage_date", "service", "daily_cost_usd", "median_cost",
                                         "mad_cost", "anomaly_score", "anomaly_direction"]) + "\n")

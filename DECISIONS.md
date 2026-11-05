@@ -348,14 +348,38 @@ tocar código.
 Alternativas. La media y el desvío estándar los mueven los mismos picos que tienen que encontrar.
 Los percentiles por serie necesitan muchos más días que los 24 a 60 que hay por combinación. Una
 línea de base sobre los 60 días completos puntúa más filas, pero usa días posteriores al evaluado y
-no se puede correr igual cada mañana en D+1. Spark ML no aporta acá: no hay etiquetas de anomalías
-reales para entrenar ni medir un clasificador, y un clustering sobre seis features agregaría un
-modelo sin una pregunta que lo justifique. Una regla sobre la serie agregada responde Q6.
+no se puede correr igual cada mañana en D+1. Un pipeline de Spark ML, por ejemplo un clustering
+sobre las features diarias, también podría separar días raros, pero la planificación del curso pide
+no forzar ML cuando un método estadístico responde mejor. Acá responde mejor: la mediana y el MAD
+casi no se mueven con la cola larga medida en los incrementos (p99 de 16,69 contra un máximo de
+317,43), y cada alerta se explica contra la historia de su propia serie, con la mediana y el MAD que
+la produjeron. Un cluster, en cambio, dice a qué grupo se parece un día, no por qué es raro para esa
+organización. Dejamos un pipeline de Spark ML como deseable para el final: KMeans para segmentar
+organizaciones por perfil de uso, que es una pregunta de Producto y no de anomalías.
 
-Consecuencias. El 36,3% de las filas, los primeros días de cada serie, queda sin puntuar. Un día sin
-uso no tiene fila en Gold, así que la historia son los días con uso y no se rellena con ceros: el
-score responde si el día es raro comparado con los días en que el servicio se usó. Sin etiquetas, la
-calidad del método se mide por cuántos días marca y por los ejemplos, no por precision ni recall.
+Chequeo de detección. Sin etiquetas, la referencia son los días que un umbral fijo llamaría
+extremos (`detection_check` en `evidence/entrega-2/cost_anomaly_summary.json`):
+
+| Días | Total | Marcados | Puntuados sin marcar | Sin historia |
+| :--- | ---: | ---: | ---: | ---: |
+| costo diario por encima del p99 de Gold (63,91 USD) | 110 | 39 (35,5%) | 41 | 30 |
+| costo diario negativo | 35 | 4 (11,4%) | 15 | 16 |
+
+Los picos marcados son saltos contra la propia serie, como `org_g8sbi4q2`, database, el 2025-08-05:
+142,95 USD contra una mediana de 9,22. Los días caros sin marcar son de series que gastan mucho
+siempre: `org_ktakpuxq`, compute, el 2025-08-06, gastó 108,76 USD contra una mediana de 35,58 (score
+2,92). Un umbral fijo los marca porque la organización es grande, y eso es lo que el método relativo
+quiere evitar. Los costos negativos casi no se marcan porque la mayoría cae dentro de la variación de
+su serie: `org_dhylurtp`, compute, el 2025-07-27, -9,00 USD contra una mediana de 19,52 (score -1,83).
+Esos días ya llevan sus eventos con `cost_anomaly_flag` y su conteo en `negative_cost_events`, que es
+el control pensado para correcciones. El único negativo grande, -134,24 USD en `org_0lvsnujz`, sí
+queda marcado.
+
+Consecuencias. El 36,3% de las filas, los primeros días de cada serie, queda sin puntuar, y eso
+explica 30 de los 110 días caros y 16 de los 35 negativos que no se marcan. Un día sin uso no tiene
+fila en Gold, así que la historia son los días con uso y no se rellena con ceros: el score responde
+si el día es raro comparado con los días en que el servicio se usó. Sin etiquetas, la calidad del
+método se mide con el chequeo de detección y los ejemplos, no con precision ni recall.
 
 ## D13. Carga batch: registro de ingestados, y el dedupe por clave va en Silver
 

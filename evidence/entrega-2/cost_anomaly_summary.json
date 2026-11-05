@@ -13,6 +13,151 @@
   },
   "flagged_pct_of_scored": 2.56,
   "orgs_with_flags": 69,
+  "detection_check": {
+    "daily_cost_p99_usd": 63.9089,
+    "above_p99": {
+      "days": 110,
+      "flagged": 39,
+      "not_flagged_scored": 41,
+      "not_flagged_unscored": 30,
+      "flagged_examples": [
+        {
+          "org_id": "org_okep7y6w",
+          "usage_date": "2025-08-07",
+          "service": "compute",
+          "daily_cost_usd": 191.8968,
+          "median_cost": 11.2716,
+          "history_days": 19,
+          "score_method": "mad",
+          "anomaly_score": 106.5055
+        },
+        {
+          "org_id": "org_g8sbi4q2",
+          "usage_date": "2025-08-05",
+          "service": "database",
+          "daily_cost_usd": 142.947,
+          "median_cost": 9.2192,
+          "history_days": 16,
+          "score_method": "mad",
+          "anomaly_score": 28.8865
+        },
+        {
+          "org_id": "org_cvs4f8cg",
+          "usage_date": "2025-08-05",
+          "service": "genai",
+          "daily_cost_usd": 222.5863,
+          "median_cost": 17.2141,
+          "history_days": 16,
+          "score_method": "mad",
+          "anomaly_score": 27.1065
+        }
+      ],
+      "not_flagged_examples": [
+        {
+          "org_id": "org_ktakpuxq",
+          "usage_date": "2025-08-06",
+          "service": "compute",
+          "daily_cost_usd": 108.7616,
+          "median_cost": 35.5846,
+          "history_days": 28,
+          "score_method": "mad",
+          "anomaly_score": 2.9248
+        },
+        {
+          "org_id": "org_ktakpuxq",
+          "usage_date": "2025-07-30",
+          "service": "compute",
+          "daily_cost_usd": 97.3079,
+          "median_cost": 45.3001,
+          "history_days": 27,
+          "score_method": "mad",
+          "anomaly_score": 3.2604
+        },
+        {
+          "org_id": "org_pbhsahxt",
+          "usage_date": "2025-08-21",
+          "service": "genai",
+          "daily_cost_usd": 96.539,
+          "median_cost": 30.663,
+          "history_days": 27,
+          "score_method": "mad",
+          "anomaly_score": 2.702
+        }
+      ],
+      "flagged_pct": 35.5
+    },
+    "negative": {
+      "days": 35,
+      "flagged": 4,
+      "not_flagged_scored": 15,
+      "not_flagged_unscored": 16,
+      "flagged_examples": [
+        {
+          "org_id": "org_0lvsnujz",
+          "usage_date": "2025-08-24",
+          "service": "analytics",
+          "daily_cost_usd": -134.2431,
+          "median_cost": 15.6128,
+          "history_days": 24,
+          "score_method": "mad",
+          "anomaly_score": -10.5509
+        },
+        {
+          "org_id": "org_ujv6oh9s",
+          "usage_date": "2025-08-17",
+          "service": "analytics",
+          "daily_cost_usd": -9.7337,
+          "median_cost": 10.3688,
+          "history_days": 18,
+          "score_method": "mad",
+          "anomaly_score": -4.8758
+        },
+        {
+          "org_id": "org_okep7y6w",
+          "usage_date": "2025-08-21",
+          "service": "compute",
+          "daily_cost_usd": -3.9069,
+          "median_cost": 10.9236,
+          "history_days": 20,
+          "score_method": "mad",
+          "anomaly_score": -4.7395
+        }
+      ],
+      "not_flagged_examples": [
+        {
+          "org_id": "org_dhylurtp",
+          "usage_date": "2025-07-27",
+          "service": "compute",
+          "daily_cost_usd": -9.0011,
+          "median_cost": 19.5194,
+          "history_days": 22,
+          "score_method": "mad",
+          "anomaly_score": -1.8315
+        },
+        {
+          "org_id": "org_afeyuhz1",
+          "usage_date": "2025-08-13",
+          "service": "compute",
+          "daily_cost_usd": -8.66,
+          "median_cost": 21.0377,
+          "history_days": 26,
+          "score_method": "mad",
+          "anomaly_score": -1.9112
+        },
+        {
+          "org_id": "org_chj755nf",
+          "usage_date": "2025-07-28",
+          "service": "compute",
+          "daily_cost_usd": -8.3109,
+          "median_cost": 17.0456,
+          "history_days": 23,
+          "score_method": "mad",
+          "anomaly_score": -2.2761
+        }
+      ],
+      "flagged_pct": 11.4
+    }
+  },
   "top": [
     {
       "org_id": "org_okep7y6w",

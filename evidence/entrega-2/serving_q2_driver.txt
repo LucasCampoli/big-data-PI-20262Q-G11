@@ -1,5 +1,5 @@
 Q2. Top 3 services by cost over the last 14 days, one organization
-target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-05T02:00:08+00:00
+target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-05T02:15:22+00:00
 
 SELECT usage_date, service, daily_cost_usd
 FROM cloud_analytics.org_daily_usage_by_service

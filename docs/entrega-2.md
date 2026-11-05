@@ -194,10 +194,33 @@ las alternativas están en D12.
 | organizaciones con al menos un día marcado | 69 de 80 |
 | caso más alto | `org_okep7y6w`, compute, 2025-08-07: 191,90 USD contra una mediana de 11,27 (score 106,5) |
 
-No usamos Spark ML porque no hay etiquetas para entrenar ni medir un clasificador. Una regla con mediana y MAD
-sobre la serie agregada responde la pregunta Q6 de forma explicable y se puede revisar día por día.
-Las limitaciones: los primeros días de cada serie quedan sin puntuar, los días sin uso no cuentan
-como cero, y sin etiquetas la calidad se juzga por el volumen de alertas y los ejemplos.
+Para saber qué hace el método con los días que un umbral fijo llamaría extremos, el resumen incluye
+un chequeo de detección (`gold_marts.md`, `cost_anomaly_summary.json`):
+
+| Días | Total | Marcados | Puntuados sin marcar | Sin historia |
+| :--- | ---: | ---: | ---: | ---: |
+| costo diario por encima del p99 de Gold (63,91 USD) | 110 | 39 (35,5%) | 41 | 30 |
+| costo diario negativo | 35 | 4 (11,4%) | 15 | 16 |
+
+| Caso | Ejemplo | Por qué |
+| :--- | :--- | :--- |
+| caro y marcado | `org_g8sbi4q2`, database, 2025-08-05: 142,95 USD, mediana 9,22, score 28,9 | salto contra su propia serie |
+| caro sin marcar | `org_ktakpuxq`, compute, 2025-08-06: 108,76 USD, mediana 35,58, score 2,92 | la serie gasta mucho siempre |
+| negativo y marcado | `org_0lvsnujz`, analytics, 2025-08-24: -134,24 USD, mediana 15,61, score -10,6 | corrección fuera de escala |
+| negativo sin marcar | `org_dhylurtp`, compute, 2025-07-27: -9,00 USD, mediana 19,52, score -1,83 | dentro de la variación de la serie |
+
+Hay tres ejemplos de cada caso en `gold_marts.md`. Que un día caro no se marque es lo esperado de un método relativo: un monto alto para una
+organización grande no es raro. Los costos negativos chicos ya quedan cubiertos por el
+`cost_anomaly_flag` de cada evento y por `negative_cost_events` en el mart, y el score marca solo los
+que se salen de su serie. Los días sin historia son la limitación más concreta: explican 30 de los
+días caros y 16 de los negativos que no se marcan.
+
+No forzamos un modelo de Spark ML, porque la planificación pide no hacerlo cuando un método
+estadístico responde mejor, y acá responde mejor. La mediana y el MAD casi no se mueven con la cola
+larga medida en los incrementos (p99 de 16,69 contra un máximo de 317,43), y cada alerta se explica
+contra la historia de su propia serie. Un clustering diría a qué grupo se parece un día, no por qué
+es raro para esa organización. Para el final queda como deseable un pipeline de Spark ML con KMeans
+que segmente organizaciones por perfil de uso (D12).
 
 ## 7. Idempotencia
 
@@ -264,5 +287,5 @@ El checklist §9.2 y los criterios §6.4, línea por línea, están en
 | Deseable | job de retención para Bronze (90 días) y Quarantine (180 días) |
 | Deseable | Silver incremental por las fechas de evento que tocó cada corrida, en lugar de reconstruir todo |
 | Deseable | autenticación y roles en Cassandra, y alertas sobre el resumen de cada corrida |
+| Deseable | pipeline de Spark ML con KMeans para segmentar organizaciones por perfil de uso (requests, cómputo, almacenamiento, GenAI, costo), con su métrica de silueta |
 | Fuera de alcance | Kafka u otro broker, Delta o Iceberg, Declarative Pipelines, Real-Time Mode, `transformWithState` |
-| Fuera de alcance | un modelo de Spark ML para anomalías mientras no haya etiquetas |

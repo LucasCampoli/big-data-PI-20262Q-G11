@@ -74,6 +74,38 @@ def score(daily: DataFrame, window_days: int, min_history: int, threshold: float
                     "score_method", "anomaly_score", "is_anomaly", "anomaly_direction"))
 
 
+EXAMPLE_COLUMNS = ["org_id", "usage_date", "service", "daily_cost_usd", "median_cost", "history_days",
+                   "score_method", "anomaly_score"]
+
+
+def detection_check(mart: DataFrame, examples: int = 3) -> dict:
+    """How the method treats the days that look extreme by plain thresholds: daily cost above the
+    global p99, and negative daily cost. With no labels this is the closest thing to a recall check,
+    and the misses show why a relative method disagrees with a fixed cutoff."""
+    p99 = mart.select(F.percentile_approx("daily_cost_usd", 0.99, 100000)).first()[0]
+    out = {"daily_cost_p99_usd": round(p99, 4)}
+    for name, cond in (("above_p99", F.col("daily_cost_usd") > p99), ("negative", F.col("daily_cost_usd") < 0)):
+        days = mart.filter(cond).cache()
+        flagged = days.filter("is_anomaly")
+        missed = days.filter("NOT is_anomaly")
+        out[name] = {
+            "days": days.count(),
+            "flagged": flagged.count(),
+            "not_flagged_scored": missed.filter("score_method != 'insufficient_history'").count(),
+            "not_flagged_unscored": missed.filter("score_method = 'insufficient_history'").count(),
+            "flagged_examples": [r.asDict() for r in flagged.orderBy(F.abs("anomaly_score").desc())
+                                 .select(*EXAMPLE_COLUMNS).limit(examples).collect()],
+            # Scored misses first: those are the method's own decision, not a lack of history.
+            "not_flagged_examples": [r.asDict() for r in missed
+                                     .orderBy((F.col("score_method") == "insufficient_history").asc(),
+                                              F.abs("daily_cost_usd").desc())
+                                     .select(*EXAMPLE_COLUMNS).limit(examples).collect()],
+        }
+        out[name]["flagged_pct"] = round(100 * out[name]["flagged"] / out[name]["days"], 1) if out[name]["days"] else 0.0
+        days.unpersist()
+    return out
+
+
 def summarize(mart: DataFrame, threshold: float) -> dict:
     total = mart.count()
     by_method = {r.score_method: r["count"] for r in mart.groupBy("score_method").count().collect()}
@@ -87,6 +119,7 @@ def summarize(mart: DataFrame, threshold: float) -> dict:
             "flagged": flagged.count(), "flagged_by_direction": by_direction,
             "flagged_pct_of_scored": round(100 * flagged.count() / scored, 2) if scored else 0.0,
             "orgs_with_flags": flagged.select("org_id").distinct().count(),
+            "detection_check": detection_check(mart),
             "top": top}
 
 
@@ -105,5 +138,8 @@ def run(ctx, metrics):
     summary = summarize(written, cfg.anomaly_threshold)
     summary.update(window_days=cfg.anomaly_window_days, min_history=cfg.anomaly_min_history)
     (cfg.logs / f"{ctx.run_id}_anomaly_summary.json").write_text(json.dumps(summary, indent=2, default=str) + "\n")
-    metrics["cost_anomaly_mart"] = {k: v for k, v in summary.items() if k != "top"}
+    metrics["cost_anomaly_mart"] = {k: v for k, v in summary.items() if k not in ("top", "detection_check")}
+    metrics["cost_anomaly_mart"]["detection_check"] = {
+        k: ({kk: vv for kk, vv in v.items() if not kk.endswith("examples")} if isinstance(v, dict) else v)
+        for k, v in summary["detection_check"].items()}
     log.info("cost_anomaly_mart %s", metrics["cost_anomaly_mart"])
