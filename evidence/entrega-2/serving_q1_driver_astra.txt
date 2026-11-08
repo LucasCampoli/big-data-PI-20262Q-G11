@@ -1,5 +1,5 @@
 Q1. Daily cost and requests per service, one organization, date range
-target: astra  keyspace: cpa  consistency: LOCAL_QUORUM  run at: 2026-11-08T19:44:51+00:00
+target: astra  keyspace: cpa  consistency: LOCAL_QUORUM  run at: 2026-11-08T22:57:37+00:00
 
 SELECT usage_date, service, daily_cost_usd, requests, events
 FROM cpa.org_daily_usage_by_service

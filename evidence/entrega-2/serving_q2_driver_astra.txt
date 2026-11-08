@@ -1,5 +1,5 @@
 Q2. Top 3 services by cost over the last 14 days, one organization
-target: astra  keyspace: cpa  consistency: LOCAL_QUORUM  run at: 2026-11-08T19:44:51+00:00
+target: astra  keyspace: cpa  consistency: LOCAL_QUORUM  run at: 2026-11-08T22:57:37+00:00
 
 SELECT usage_date, service, daily_cost_usd
 FROM cpa.org_daily_usage_by_service

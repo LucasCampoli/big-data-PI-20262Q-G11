@@ -1,7 +1,7 @@
 {
-  "run_id": "20261108T194215Z-d92e01",
-  "started_utc": "2026-11-08T19:42:15+00:00",
-  "git_commit": "096df20-dirty",
+  "run_id": "20261108T225451Z-e13432",
+  "started_utc": "2026-11-08T22:54:51+00:00",
+  "git_commit": "53d0b1d",
   "requested_stages": [
     "serving"
   ],
@@ -28,6 +28,7 @@
     "cassandra_username": "",
     "cassandra_password": "<unset>",
     "cassandra_consistency": "LOCAL_QUORUM",
+    "cassandra_local_dc": "dc1",
     "astra_bundle": "<set>",
     "astra_token": "<set>",
     "anomaly_threshold": 3.5,
@@ -58,10 +59,10 @@
         },
         "target": "astra"
       },
-      "seconds": 108.23
+      "seconds": 110.55
     }
   ],
   "status": "ok",
-  "spark_app_id": "local-1794166937814",
-  "finished_utc": "2026-11-08T19:44:00+00:00"
+  "spark_app_id": "local-1794178493981",
+  "finished_utc": "2026-11-08T22:56:47+00:00"
 }

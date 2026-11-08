@@ -1,5 +1,5 @@
 Q6. Days flagged as cost anomalies, one organization, August
-target: astra  keyspace: cpa  consistency: LOCAL_QUORUM  run at: 2026-11-08T19:44:51+00:00
+target: astra  keyspace: cpa  consistency: LOCAL_QUORUM  run at: 2026-11-08T22:57:37+00:00
 
 SELECT usage_date, service, daily_cost_usd, median_cost, anomaly_score, is_anomaly, anomaly_direction
 FROM cpa.cost_anomalies_by_org

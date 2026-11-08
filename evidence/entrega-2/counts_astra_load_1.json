@@ -1,7 +1,7 @@
 {
   "label": "astra_load_1",
-  "taken_utc": "2026-11-08T19:41:41+00:00",
-  "last_full_run": "20261105T015842Z-bb0aea",
+  "taken_utc": "2026-11-08T22:54:17+00:00",
+  "last_full_run": "20261108T224445Z-126160",
   "lake_rows": {
     "bronze/billing_monthly": 240,
     "bronze/customers_orgs": 80,
@@ -36,7 +36,7 @@
   },
   "registry_files": 7,
   "checkpoint_commits": {
-    "bronze_usage_events": 12,
+    "bronze_usage_events": 13,
     "quarantine_usage_events_parse": 12
   }
 }
