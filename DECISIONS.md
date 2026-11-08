@@ -510,7 +510,14 @@ saltea el `CREATE KEYSPACE`, que AstraDB no admite. El keyspace del proyecto en 
 creado desde la consola, y se elige con `CASSANDRA_KEYSPACE=cpa`. Las dos cargas de Gold dejaron
 11.050 filas en cada tabla y pasaron la verificación por organización. Las consultas se corren con
 el driver (`python -m pipeline.queries`) contra cualquiera de los dos destinos, y con cqlsh dentro
-del contenedor local, desde los mismos archivos `cql/q*.cql`.
+del contenedor local, desde los mismos archivos `cql/q*.cql`. Contra Cassandra local el driver usa
+`TokenAwarePolicy` sobre `DCAwareRoundRobinPolicy` con `dc1`, el data center del compose, así
+`LOCAL_QUORUM` se resuelve ahí.
+
+Entorno (§2.2 de la consigna). Corremos el mismo PySpark 4.2.0 fijado en `requirements.txt`, en modo
+`local[4]` sobre WSL2 con JDK 21. Lo validamos con `make check`, las 44 pruebas de `make test` y dos
+corridas completas desde un clon limpio, con los mismos conteos. Cassandra corre en Docker y AstraDB
+se probó con el mismo código. No lo corrimos en Google Colab.
 
 Alternativas. Bajar a PySpark 3.5 para usar el conector obligaba a instalar un JDK 17 y a cambiar la
 versión con la que se generó la evidencia de la entrega 1. Escribir con `foreachBatch` desde el

@@ -30,6 +30,12 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 | D11 y D12 cerradas con los conteos de Gold | estaban abiertas a propósito | D11, D12 |
 | Spark local en WSL, Cassandra en Docker | el supuesto de §8.1 del diseño preveía este cambio | D16 |
 
+El §2.2 de la consigna pide un entorno equivalente a Colab. Corremos el mismo PySpark 4.2.0 fijado
+en `requirements.txt`, en modo `local[4]` sobre WSL2 con JDK 21, y lo validamos con `make check`,
+las 44 pruebas de `make test` y dos corridas completas desde un clon limpio, con los mismos conteos.
+Cassandra corre en Docker y AstraDB se probó con el mismo código. No lo corrimos en Google Colab
+(D16).
+
 ## 2. Arquitectura v2
 
 ![Cloud Provider Analytics, arquitectura v2, 2026-11-08](architecture_v2.svg)
