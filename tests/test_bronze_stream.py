@@ -3,6 +3,7 @@ and the checkpoint makes a second run read nothing."""
 import json
 
 from pipeline import bronze_stream, lake
+from pipeline.run import EXPECTED_MASTERS, stage_check
 
 BASE = {"timestamp": "2025-07-20T10:00:00Z", "org_id": "org_a", "resource_id": "res_a",
         "service": "compute", "region": "us-east", "metric": "cpu_hours", "value": 1.5,
@@ -55,3 +56,21 @@ def test_rerun_with_the_same_checkpoint_reads_nothing(make_ctx, tmp_path):
     bronze_stream.run(ctx, metrics)
     assert metrics[bronze_stream.BRONZE_QUERY]["input_rows"] == 0
     assert lake.read(ctx.spark, ctx.cfg.table("bronze", "usage_events")).count() == 4
+
+
+def test_non_jsonl_files_in_the_source_are_ignored(make_ctx, tmp_path):
+    write_parts(tmp_path / "landing")
+    stream = tmp_path / "landing" / "usage_events_stream"
+    # What Windows leaves next to a downloaded file; read as JSON it fails the whole query.
+    (stream / "part_0.jsonl:Zone.Identifier").write_bytes(b"[ZoneTransfer]\r\nZoneId=3\r\n\x00\xff")
+    ctx = make_ctx(pii_hash_salt="test")
+    metrics = {}
+    bronze_stream.run(ctx, metrics)
+    assert metrics[bronze_stream.BRONZE_QUERY]["input_rows"] == 9
+    assert lake.read(ctx.spark, ctx.cfg.table("bronze", "usage_events")).count() == 4
+
+    for master in EXPECTED_MASTERS:
+        (tmp_path / "landing" / f"{master}.csv").touch()
+    check = {}
+    stage_check(ctx, check)
+    assert (check["event_parts"], check["ignored_files"]) == (2, 1)

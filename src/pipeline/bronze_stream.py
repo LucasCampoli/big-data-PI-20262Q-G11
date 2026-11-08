@@ -29,6 +29,7 @@ log = logging.getLogger("pipeline.bronze_stream")
 BRONZE_QUERY = "bronze_usage_events"
 QUARANTINE_QUERY = "quarantine_usage_events_parse"
 SOURCE_COLUMNS = [f.name for f in USAGE_EVENT_SCHEMA.fields]
+EVENT_FILES = "*.jsonl"
 
 
 class ProgressLogger(StreamingQueryListener):
@@ -60,6 +61,9 @@ def read_events(spark, cfg):
             .option("mode", "PERMISSIVE")
             .option("columnNameOfCorruptRecord", CORRUPT_RECORD)
             .option("maxFilesPerTrigger", cfg.stream_max_files_per_trigger)
+            # Only the event parts: a file copied from Windows brings a part.jsonl:Zone.Identifier
+            # next to it, and the source would try to read it as JSON and fail the query.
+            .option("pathGlobFilter", EVENT_FILES)
             .json(str(cfg.landing / "usage_events_stream"))
             .withColumn("source_file", F.col("_metadata.file_name"))
             .withColumn("ingest_ts", F.current_timestamp())

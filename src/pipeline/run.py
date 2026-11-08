@@ -25,10 +25,16 @@ def stage_check(ctx, metrics):
     cfg = ctx.cfg
     metrics["java"] = check_java(cfg)
     missing = [m for m in EXPECTED_MASTERS if not (cfg.landing / f"{m}.csv").exists()]
-    parts = sorted((cfg.landing / "usage_events_stream").glob("*.jsonl"))
+    stream_dir = cfg.landing / "usage_events_stream"
+    parts = sorted(stream_dir.glob(bronze_stream.EVENT_FILES))
+    others = sorted(p.name for p in stream_dir.glob("*") if p.is_file() and p not in parts)
     metrics["landing"] = str(cfg.landing)
     metrics["master_files"] = len(EXPECTED_MASTERS) - len(missing)
     metrics["event_parts"] = len(parts)
+    if others:
+        # The stream reads only *.jsonl, so these do not break it; they are reported, not counted.
+        metrics["ignored_files"] = len(others)
+        log.warning("%s files in %s are not event parts and are ignored, e.g. %s", len(others), stream_dir, others[0])
     if missing or not parts:
         raise PipelineError(f"Landing at {cfg.landing} is incomplete: missing {missing or 'event parts'}. "
                             "See README, section on getting the dataset")
