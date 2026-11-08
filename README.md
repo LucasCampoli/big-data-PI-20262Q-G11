@@ -28,6 +28,12 @@ serving en Cassandra.
 
 Con unos 4 GB de RAM libres alcanza: Spark usa 2 GB y Cassandra 1 GB de heap.
 
+En Ubuntu, el JDK, el módulo de entornos virtuales de Python y make se instalan con:
+
+```bash
+sudo apt install openjdk-21-jdk python3-venv make
+```
+
 ### 1. Instalar
 
 ```bash
@@ -55,6 +61,10 @@ data/landing/nps_surveys.csv
 data/landing/billing_monthly.csv
 data/landing/usage_events_stream/events_part_0000.jsonl   (120 archivos)
 ```
+
+Si el dataset se copia desde Windows, conviene no copiar los archivos `*:Zone.Identifier` que
+Windows agrega al lado de cada descarga. El stream lee solo `*.jsonl` y `make check` los informa
+como ignorados, así que no rompen nada, pero no son parte de Landing.
 
 Sin el dataset, `data/sample/` trae un recorte con el mismo layout (20 organizaciones, 10 partes),
 y se usa con `DATA_LANDING=data/sample make run`.
@@ -93,6 +103,12 @@ make rerun-evidence # desde cero: el pipeline dos veces seguidas, conteos y todo
 | `make reset-serving` | el keyspace de Cassandra; `make serve` lo vuelve a crear |
 | `make cassandra-down` | detiene el contenedor y conserva el volumen de datos |
 
+El contenedor (`cpa-cassandra`) y el volumen (`cloud-provider-analytics_cassandra-data`) tienen nombre
+fijo en `infra/docker-compose.yml`. Un clon nuevo en la misma máquina usa el mismo contenedor y
+encuentra el keyspace `cloud_analytics` con lo que cargó la corrida anterior. La carga es un upsert,
+así que una corrida nueva deja las mismas filas, pero para arrancar con el keyspace vacío hay que
+correr `make reset-serving`.
+
 ### Streaming continuo
 
 Por defecto el stream procesa lo que hay en Landing y se detiene (`STREAM_TRIGGER=available_now`).
@@ -112,7 +128,9 @@ El mismo código carga y consulta AstraDB cambiando solo la conexión. Lo probam
    `CREATE KEYSPACE` por CQL.
 3. Generar un token con el rol Database Administrator y descargar el secure connect bundle. Guardar
    los dos fuera del repo.
-4. Exportar las variables y correr:
+4. `make serve` carga lo que hay en Gold, así que primero tiene que existir el lake: `make run`
+   con la Cassandra local, o `SERVING_TARGET=none make run` sin ella.
+5. Exportar las variables y correr:
 
 ```bash
 export SERVING_TARGET=astra
