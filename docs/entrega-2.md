@@ -362,10 +362,11 @@ El checklist §9.2 y los criterios §6.4, línea por línea, están en
 | Obligatorio | marts `revenue_by_org_month`, `tickets_by_org_date` y `genai_tokens_by_org_date` en Gold, con sus tablas en Cassandra y las consultas Q3, Q4 y Q5 |
 | Obligatorio | confirmar con la cátedra si Q3 a Q5 son por organización o globales (§8.1 del diseño) |
 | Obligatorio | cargar en AstraDB los marts nuevos del final, con sus consultas |
+| Obligatorio | autenticación y roles en Cassandra: `PasswordAuthenticator`, un rol de carga con `MODIFY` y uno de lectura con `SELECT` (seguridad, §7.2.7 y §9.3 de la consigna) |
+| Obligatorio | alertas sobre el resumen JSON de cada corrida (etapa fallida, O3, conciliación de Gold) y un tablero del tamaño de Quarantine (observabilidad, §7.2.7 y §9.3) |
 | Obligatorio | presentación ejecutiva, video y guion de la defensa |
 | Deseable | vista intradía provisoria del speed layer con `foreachBatch` (D3, apéndice C) |
 | Deseable | job de retención para Bronze (90 días) y Quarantine (180 días) |
 | Deseable | Silver incremental por las fechas de evento que tocó cada corrida, en lugar de reconstruir todo |
-| Deseable | autenticación y roles en Cassandra, y alertas sobre el resumen de cada corrida |
 | Deseable | pipeline de Spark ML con KMeans para segmentar organizaciones por perfil de uso (requests, cómputo, almacenamiento, GenAI, costo), con su métrica de silueta |
 | Fuera de alcance | Kafka u otro broker, Delta o Iceberg, Declarative Pipelines, Real-Time Mode, `transformWithState` |
