@@ -82,7 +82,7 @@ escribe un archivo por micro-batch. Sobre los datos reales:
 | filas descartadas por el watermark | 0 |
 | filas en el estado del dedupe al final | 43.200 (todas llegaron dentro de la hora) |
 | re-ejecución con el mismo checkpoint | 0 filas leídas |
-| experimento con watermark de 2 s | 0 descartadas, estado máximo 24.480 claves, 24.480 liberadas |
+| experimento con watermark de 2 s | 0 descartadas; en la corrida de la evidencia, estado máximo de 15.840 claves y 28.800 liberadas |
 
 El experimento (`make stream-state-demo`, 4 archivos por micro-batch) es la prueba empírica de D8:
 el estado se libera a medida que avanza el watermark y Bronze sigue recibiendo todos los eventos.
@@ -308,7 +308,7 @@ guarda los conteos después de cada una (`counts_run_1.json`, `counts_run_2.json
 | Mecanismo | Qué protege | Resultado de la segunda corrida |
 | :--- | :--- | :--- |
 | registro de ingestados | Landing a Bronze, batch | los 7 CSV salteados, Bronze sin cambios |
-| checkpoints de las dos queries | Landing a Bronze, streaming | 0 archivos nuevos, los mismos 12 commits en cada query |
+| checkpoints de las dos queries | Landing a Bronze, streaming | 0 archivos nuevos, los mismos commits que en la primera: 13 en Bronze (12 con datos y uno vacío que avanza el watermark) y 12 en Quarantine |
 | reconstrucción y dynamic partition overwrite | Silver y Gold | mismas filas en las 18 tablas del lake |
 | Quarantine de reglas sobrescrita entera | Quarantine | sin copias del día anterior |
 | upsert por primary key | Cassandra | las mismas 11.050 filas en cada tabla |

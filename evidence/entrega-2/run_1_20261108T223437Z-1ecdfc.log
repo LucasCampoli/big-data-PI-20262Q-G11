@@ -1,0 +1,58 @@
+2026-11-08T22:34:37 INFO    20261108T223437Z-1ecdfc pipeline: run 20261108T223437Z-1ecdfc, stages ['check', 'bronze-batch', 'bronze-stream', 'silver', 'gold', 'anomalies', 'serving'], log <repo>/logs/20261108T223437Z-1ecdfc.log
+2026-11-08T22:34:37 INFO    20261108T223437Z-1ecdfc pipeline: config {'landing': 'data/landing', 'datalake': 'datalake', 'logs': 'logs', 'evidence': 'evidence/entrega-2', 'java_home': '/usr/lib/jvm/java-21-openjdk-amd64', 'spark_master': 'local[4]', 'driver_memory': '2g', 'shuffle_partitions': 8, 'files_per_partition': 1, 'stream_max_files_per_trigger': 10, 'stream_trigger': 'available_now', 'stream_processing_time': '1 minute', 'stream_watermark': '1 hour', 'serving_target': 'cassandra', 'cassandra_hosts': ['127.0.0.1'], 'cassandra_port': 9042, 'cassandra_keyspace': 'cloud_analytics', 'cassandra_username': '', 'cassandra_password': '<unset>', 'cassandra_consistency': 'LOCAL_QUORUM', 'cassandra_local_dc': 'dc1', 'astra_bundle': '<unset>', 'astra_token': '<unset>', 'anomaly_threshold': 3.5, 'anomaly_window_days': 28, 'anomaly_min_history': 14, 'pii_hash_salt': '<set>'}
+2026-11-08T22:34:42 INFO    20261108T223437Z-1ecdfc pipeline.spark: spark 4.2.0, master local[4], shuffle partitions 8, app id local-1794177280373
+2026-11-08T22:34:42 INFO    20261108T223437Z-1ecdfc pipeline: stage check: start
+2026-11-08T22:34:42 INFO    20261108T223437Z-1ecdfc pipeline: stage check: ok in 0.0 s
+2026-11-08T22:34:42 INFO    20261108T223437Z-1ecdfc pipeline: stage bronze-batch: start
+2026-11-08T22:34:48 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: customers_orgs.csv: 80 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:49 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: users.csv: 800 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:49 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: resources.csv: 400 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:50 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: support_tickets.csv: 1000 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:51 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: marketing_touches.csv: 1500 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:51 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: nps_surveys.csv: 92 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:52 INFO    20261108T223437Z-1ecdfc pipeline.bronze_batch: billing_monthly.csv: 240 rows to Bronze, 0 to Quarantine, 0 duplicate keys
+2026-11-08T22:34:53 INFO    20261108T223437Z-1ecdfc pipeline: stage bronze-batch: ok in 10.4 s
+2026-11-08T22:34:53 INFO    20261108T223437Z-1ecdfc pipeline: stage bronze-stream: start
+2026-11-08T22:34:53 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events started (id 5f85fe14-77a0-4c4b-b946-3389c21702af)
+2026-11-08T22:34:53 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse started (id b38bab29-fa67-4b3d-b794-cc1ea662b8b3)
+2026-11-08T22:34:54 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 0: 3600 input rows in 562 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:54 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 1: 3600 input rows in 353 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:55 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 0: 3600 input rows in 1294 ms, state rows 3600, dropped by watermark 0
+2026-11-08T22:34:55 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 2: 3600 input rows in 354 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:55 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 3: 3600 input rows in 279 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:55 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 4: 3600 input rows in 261 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:56 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 1: 3600 input rows in 712 ms, state rows 7200, dropped by watermark 0
+2026-11-08T22:34:56 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 5: 3600 input rows in 275 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:56 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 6: 3600 input rows in 255 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:56 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 2: 3600 input rows in 607 ms, state rows 10800, dropped by watermark 0
+2026-11-08T22:34:56 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 7: 3600 input rows in 228 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:56 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 8: 3600 input rows in 297 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:57 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 3: 3600 input rows in 611 ms, state rows 14400, dropped by watermark 0
+2026-11-08T22:34:57 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 9: 3600 input rows in 251 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:57 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 10: 3600 input rows in 231 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:57 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query quarantine_usage_events_parse batch 11: 3600 input rows in 266 ms, state rows -, dropped by watermark -
+2026-11-08T22:34:57 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 4: 3600 input rows in 566 ms, state rows 18000, dropped by watermark 0
+2026-11-08T22:34:57 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 5: 3600 input rows in 410 ms, state rows 21600, dropped by watermark 0
+2026-11-08T22:34:58 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 6: 3600 input rows in 386 ms, state rows 25200, dropped by watermark 0
+2026-11-08T22:34:58 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 7: 3600 input rows in 421 ms, state rows 28800, dropped by watermark 0
+2026-11-08T22:34:59 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 8: 3600 input rows in 393 ms, state rows 32400, dropped by watermark 0
+2026-11-08T22:34:59 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 9: 3600 input rows in 405 ms, state rows 36000, dropped by watermark 0
+2026-11-08T22:35:00 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 10: 3600 input rows in 382 ms, state rows 39600, dropped by watermark 0
+2026-11-08T22:35:00 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 11: 3600 input rows in 439 ms, state rows 43200, dropped by watermark 0
+2026-11-08T22:35:00 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: streaming summary {'bronze_usage_events': {'batches': 13, 'batches_with_data': 12, 'input_rows': 43200, 'rows_dropped_by_watermark': 0, 'max_state_rows': 43200, 'state_rows_removed': 0}, 'quarantine_usage_events_parse': {'batches': 12, 'batches_with_data': 12, 'input_rows': 43200, 'rows_dropped_by_watermark': 0, 'max_state_rows': 0, 'state_rows_removed': 0}, 'progress_file': '20261108T223437Z-1ecdfc_stream_progress.jsonl'}
+2026-11-08T22:35:00 INFO    20261108T223437Z-1ecdfc pipeline: stage bronze-stream: ok in 7.4 s
+2026-11-08T22:35:00 INFO    20261108T223437Z-1ecdfc pipeline: stage silver: start
+2026-11-08T22:35:00 INFO    20261108T223437Z-1ecdfc pipeline.bronze_stream: query bronze_usage_events batch 12: 0 input rows in 311 ms, state rows 43200, dropped by watermark 0
+2026-11-08T22:35:09 INFO    20261108T223437Z-1ecdfc pipeline.silver: silver usage_events {'bronze_rows': 43200, 'quarantined_rows': 0, 'bronze_cost': 147433.9778000001, 'quarantined_cost': 0.0, 'silver_rows': 43200, 'unit_imputed': 2075, 'value_null': 877, 'cost_anomaly_flag': 211, 'value_without_unit': 0, 'distinct_event_id': 43200, 'event_id_null': 0, 'event_dates': 60, 'duplicates_removed': 0, 'quarantined_by_rule': {}, 'quarantined_cost_pct': 0.0, 'quarantined_rows_pct': 0.0, 'o3_breached': False}
+2026-11-08T22:35:09 INFO    20261108T223437Z-1ecdfc pipeline: stage silver: ok in 8.6 s
+2026-11-08T22:35:09 INFO    20261108T223437Z-1ecdfc pipeline: stage gold: start
+2026-11-08T22:35:10 INFO    20261108T223437Z-1ecdfc pipeline.gold: gold reconciliation {'gold_rows': 11050, 'silver_grain_keys': 11050, 'null_keys': 0, 'events_in_gold': 43200, 'silver_rows': 43200, 'org_days': 4580, 'max_abs_diff_usd': 0.0, 'org_days_over_tolerance': 0, 'tolerance_usd': 0.01, 'passed': True, 'failures': []}
+2026-11-08T22:35:11 INFO    20261108T223437Z-1ecdfc pipeline: stage gold: ok in 2.3 s
+2026-11-08T22:35:11 INFO    20261108T223437Z-1ecdfc pipeline: stage anomalies: start
+2026-11-08T22:35:15 INFO    20261108T223437Z-1ecdfc pipeline.anomalies: cost_anomaly_mart {'rows': 11050, 'scored_rows': 7043, 'by_method': {'insufficient_history': 4007, 'mad': 7043}, 'threshold': 3.5, 'flagged': 180, 'flagged_by_direction': {'spike': 138, 'drop': 42}, 'flagged_pct_of_scored': 2.56, 'orgs_with_flags': 69, 'window_days': 28, 'min_history': 14, 'detection_check': {'daily_cost_p99_usd': 63.9089, 'above_p99': {'days': 110, 'flagged': 39, 'not_flagged_scored': 41, 'not_flagged_unscored': 30, 'flagged_pct': 35.5}, 'negative': {'days': 35, 'flagged': 4, 'not_flagged_scored': 15, 'not_flagged_unscored': 16, 'flagged_pct': 11.4}}}
+2026-11-08T22:35:15 INFO    20261108T223437Z-1ecdfc pipeline: stage anomalies: ok in 4.4 s
+2026-11-08T22:35:15 INFO    20261108T223437Z-1ecdfc pipeline: stage serving: start
+2026-11-08T22:35:18 INFO    20261108T223437Z-1ecdfc pipeline.serving: cloud_analytics.org_daily_usage_by_service: 11050 rows upserted, {'organizations': 80, 'gold_rows': 11050, 'cassandra_rows': 11050, 'mismatches': [], 'passed': True, 'rows_written': 11050}
+2026-11-08T22:35:19 INFO    20261108T223437Z-1ecdfc pipeline.serving: cloud_analytics.cost_anomalies_by_org: 11050 rows upserted, {'organizations': 80, 'gold_rows': 11050, 'cassandra_rows': 11050, 'mismatches': [], 'passed': True, 'rows_written': 11050}
+2026-11-08T22:35:19 INFO    20261108T223437Z-1ecdfc pipeline: stage serving: ok in 3.9 s
+2026-11-08T22:35:20 INFO    20261108T223437Z-1ecdfc pipeline: run 20261108T223437Z-1ecdfc finished with status ok, summary <repo>/logs/20261108T223437Z-1ecdfc.json

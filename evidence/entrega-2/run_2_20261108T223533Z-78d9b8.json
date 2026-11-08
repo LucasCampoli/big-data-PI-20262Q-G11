@@ -1,7 +1,7 @@
 {
-  "run_id": "20261105T015842Z-bb0aea",
-  "started_utc": "2026-11-05T01:58:42+00:00",
-  "git_commit": "af95d6e-dirty",
+  "run_id": "20261108T223533Z-78d9b8",
+  "started_utc": "2026-11-08T22:35:33+00:00",
+  "git_commit": "9ef2d4a",
   "requested_stages": [
     "check",
     "bronze-batch",
@@ -34,7 +34,8 @@
     "cassandra_username": "",
     "cassandra_password": "<unset>",
     "cassandra_consistency": "LOCAL_QUORUM",
-    "astra_bundle": "",
+    "cassandra_local_dc": "dc1",
+    "astra_bundle": "<unset>",
     "astra_token": "<unset>",
     "anomaly_threshold": 3.5,
     "anomaly_window_days": 28,
@@ -82,7 +83,7 @@
         "files_ingested": 0,
         "files_skipped": 7
       },
-      "seconds": 2.38
+      "seconds": 2.77
     },
     {
       "stage": "bronze-stream",
@@ -104,9 +105,9 @@
           "max_state_rows": 0,
           "state_rows_removed": 0
         },
-        "progress_file": "20261105T015842Z-bb0aea_stream_progress.jsonl"
+        "progress_file": "20261108T223533Z-78d9b8_stream_progress.jsonl"
       },
-      "seconds": 0.97
+      "seconds": 1.29
     },
     {
       "stage": "silver",
@@ -169,7 +170,7 @@
           "o3_breached": false
         }
       },
-      "seconds": 11.14
+      "seconds": 13.79
     },
     {
       "stage": "gold",
@@ -189,7 +190,7 @@
           "failures": []
         }
       },
-      "seconds": 2.48
+      "seconds": 2.71
     },
     {
       "stage": "anomalies",
@@ -211,10 +212,27 @@
           "flagged_pct_of_scored": 2.56,
           "orgs_with_flags": 69,
           "window_days": 28,
-          "min_history": 14
+          "min_history": 14,
+          "detection_check": {
+            "daily_cost_p99_usd": 63.9089,
+            "above_p99": {
+              "days": 110,
+              "flagged": 39,
+              "not_flagged_scored": 41,
+              "not_flagged_unscored": 30,
+              "flagged_pct": 35.5
+            },
+            "negative": {
+              "days": 35,
+              "flagged": 4,
+              "not_flagged_scored": 15,
+              "not_flagged_unscored": 16,
+              "flagged_pct": 11.4
+            }
+          }
         }
       },
-      "seconds": 3.09
+      "seconds": 4.6
     },
     {
       "stage": "serving",
@@ -238,10 +256,10 @@
         },
         "target": "cassandra"
       },
-      "seconds": 3.55
+      "seconds": 3.61
     }
   ],
   "status": "ok",
-  "spark_app_id": "local-1793843925114",
-  "finished_utc": "2026-11-05T01:59:09+00:00"
+  "spark_app_id": "local-1794177336588",
+  "finished_utc": "2026-11-08T22:36:08+00:00"
 }

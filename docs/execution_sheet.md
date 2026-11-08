@@ -22,14 +22,14 @@ de Spark: cada `count`, cada escritura y cada lectura de métricas es un job.
 
 | Etapa | Qué hace | Trigger | Segundos | Jobs | Tareas | Shuffle escrito |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| `bronze-batch` | 7 CSV a Bronze, registro de ingestados | por corrida | 9,0 | 64 | 64 | 51 KB |
-| `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 6,4 | 24 | 108 | 4.570 KB |
-| `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 8,1 | 63 | 141 | 6.176 KB |
-| `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 2,1 | 20 | 126 | 963 KB |
-| `anomalies` | `cost_anomaly_mart` | por corrida | 2,8 | 21 | 166 | 1.202 KB |
-| `serving` | upsert de los dos marts en Cassandra y verificación | por corrida | 4,4 | 12 | 148 | 1.056 KB |
+| `bronze-batch` | 7 CSV a Bronze, registro de ingestados | por corrida | 10,4 | 64 | 64 | 51 KB |
+| `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 7,4 | 25 | 109 | 4.569 KB |
+| `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 8,6 | 63 | 141 | 6.176 KB |
+| `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 2,3 | 20 | 126 | 964 KB |
+| `anomalies` | `cost_anomaly_mart` y el chequeo de detección | por corrida | 4,4 | 45 | 235 | 1.287 KB |
+| `serving` | upsert de los dos marts en Cassandra y verificación | por corrida | 3,9 | 12 | 148 | 1.056 KB |
 
-La corrida completa tarda unos 33 segundos y la re-ejecución unos 24 (los tiempos varían entre corridas y con la carga de la máquina): el stream no lee nada y la carga batch
+La corrida completa tarda unos 37 segundos y la re-ejecución unos 29 (los tiempos varían entre corridas y con la carga de la máquina): el stream no lee nada y la carga batch
 saltea los 7 CSV registrados. Silver, Gold y la carga se rehacen enteros en las dos (D8).
 
 El shuffle más grande es el de Silver: el dedupe por `event_id` es una ventana particionada por
