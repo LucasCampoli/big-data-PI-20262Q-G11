@@ -70,10 +70,7 @@ def ingest_master(ctx, entity: str, registered: dict) -> dict:
     good = df.filter(F.col(CORRUPT_RECORD).isNull()).drop(CORRUPT_RECORD)
     bad = df.filter(F.col(CORRUPT_RECORD).isNotNull())
     target = cfg.table("bronze", entity)
-    writer = good.coalesce(1).write.mode("append")
-    if entity in MASTER_PARTITION:
-        writer = writer.partitionBy(MASTER_PARTITION[entity])
-    writer.parquet(str(target))
+    good.coalesce(1).write.mode("append").partitionBy(MASTER_PARTITION[entity]).parquet(str(target))
 
     rejected = bad.count()
     if rejected:

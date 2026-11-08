@@ -21,9 +21,12 @@ def test_unparseable_row_is_quarantined_with_its_raw_line(make_ctx, tmp_path):
     stats = bronze_batch.ingest_master(ctx, "customers_orgs", {})
     assert (stats["rows_bronze"], stats["rows_quarantined"]) == (1, 1)
 
-    bronze = lake.read(ctx.spark, ctx.cfg.table("bronze", "customers_orgs"))
+    target = ctx.cfg.table("bronze", "customers_orgs")
+    bronze = lake.read(ctx.spark, target)
     assert [r.org_id for r in bronze.collect()] == ["org_a"]
     assert {"ingest_ts", "ingest_date", "source_file"} <= set(bronze.columns)
+    # Each snapshot lands under the date it was loaded (D5).
+    assert [d.name for d in target.iterdir() if d.is_dir()] == [f"ingest_date={ctx.run_ts.date()}"]
 
     q = lake.read(ctx.spark, ctx.cfg.table("quarantine", "masters_parse")).first()
     assert q.rule_name == "parse_error"

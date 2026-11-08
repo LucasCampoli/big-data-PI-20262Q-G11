@@ -140,7 +140,7 @@ def inventory(spark, cfg: Config) -> str:
 
 COLUMN_NOTES = {
     "ingest_ts": "when the row entered Bronze (one value per run or micro-batch)",
-    "ingest_date": "date of ingest_ts, Bronze partition for events",
+    "ingest_date": "date of ingest_ts, Bronze partition for events and the snapshot masters",
     "source_file": "Landing file the row came from",
     "processed_ts": "when Silver rebuilt the row",
     "computed_ts": "when Gold computed the row",

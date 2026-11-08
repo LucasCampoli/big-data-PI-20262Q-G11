@@ -68,8 +68,9 @@ MASTER_KEYS = {
     "billing_monthly": ["invoice_id"],
 }
 
-# Bronze partition column per master (D5): billing by month, the snapshots unpartitioned.
-MASTER_PARTITION = {"billing_monthly": "month"}
+# Bronze partition column per master (D5): billing by month, each snapshot under the date it was
+# loaded, so the 90-day retention drops whole directories and a new snapshot never mixes with an old one.
+MASTER_PARTITION = {entity: "ingest_date" for entity in MASTER_SCHEMAS} | {"billing_monthly": "month"}
 
 
 def with_corrupt_column(schema: StructType) -> StructType:
