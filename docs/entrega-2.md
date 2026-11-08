@@ -198,6 +198,7 @@ WHERE org_id = 'org_okep7y6w'
  2025-08-07 |    compute |       191.8968 |      212 |      3
  2025-08-07 | networking |         3.8985 |      378 |      6
  2025-08-06 | networking |         0.3809 |     null |      3
+...
 (25 rows)
 ```
 
@@ -296,7 +297,7 @@ de los CQL, la verificación de Java y la sal obligatoria del hash de emails.
 
 La configuración vive en `config/pipeline.env`, copiado de `config/pipeline.env.example`, y cada
 variable se puede pisar desde el entorno. El pipeline acepta Java 17, 21 o 25; la evidencia se
-generó con 21 y el check y las pruebas de Spark también pasan con 25. Los errores esperables (otra
+generó con 21, y con 25 pasan `make check` y las 43 pruebas. Los errores esperables (otra
 versión de Java, `PII_HASH_SALT` sin definir, Landing incompleto, encabezado CSV distinto del
 esquema, Gold que no concilia, Cassandra o AstraDB inaccesibles o sin credenciales) cortan la
 corrida con un mensaje en el log y código 1.

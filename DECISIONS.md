@@ -11,7 +11,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | :-- | :--- | :--- |
 | D1 | Un único esquema explícito que cubre las dos versiones de evento | Aceptada |
 | D2 | Leer `value` como string en Bronze y castear en Silver con `try_cast` | Aceptada |
-| D3 | Híbrido estilo Lambda, con un speed layer sin ventanas | Aceptada |
+| D3 | Híbrido estilo Lambda, con un speed layer sin ventanas (diferido) | Aceptada |
 | D4 | Cinco zonas, Parquet con Snappy | Aceptada |
 | D5 | Una sola columna de fecha, `ingest_date` en Bronze y `event_date` en Silver | Aceptada |
 | D6 | Política de calidad: primero imputar | Aceptada |

@@ -25,7 +25,7 @@ lo que queda para el MVP final. Los dueños son los roles de `docs/design.md` §
 | `gold/org_daily_usage_by_service` | Marts | Confidencial | carga a Cassandra, BI | 13 meses sobre `usage_date` |
 | `gold/cost_anomaly_mart` | Marts | Confidencial | carga a Cassandra, BI | 13 meses sobre `usage_date` |
 | `quarantine/*`, 4 tablas | Calidad y Silver | la del origen: `raw_record` puede traer un email | ingenieros del equipo, como cola de revisión | 180 días las de append; las de reglas se reconstruyen |
-| Cassandra `cloud_analytics`, 2 tablas | Serving | Confidencial, sin datos personales | FinOps y Producto, solo lectura | la del mart de Gold |
+| Cassandra `cloud_analytics` y AstraDB `cpa`, 2 tablas cada una | Serving | Confidencial, sin datos personales | FinOps y Producto, solo lectura; en AstraDB, por token de aplicación | la del mart de Gold |
 | `_registry`, `_checkpoints`, `logs/` | Ingesta | Interna | ingenieros del equipo | lo que dure la query; logs 90 días |
 
 | Activo | Reglas de calidad | Métricas | Linaje | Monitoreo | Evidencia |

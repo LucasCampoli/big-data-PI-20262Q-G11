@@ -16,10 +16,13 @@ DELIVERIES = {
         ("appendix", DOCS / "appendix.md"),
         ("decisions", ROOT / "DECISIONS.md"),
     ]},
-    # The v2 figure is shorter, so the text of §2 continues under it on the same page.
+    # The v2 figure is shorter: §2 starts on a new page with its title, figure and text together.
+    # An id that starts with a digit needs the attribute selector. The execution sheet and the
+    # decisions index follow the governance matrix without a page break.
     2: {"svg": "architecture_v2.svg",
-        # The execution sheet and the decisions index follow the governance matrix without a page break.
-        "figure_css": "figure.arch { page-break-after: auto; } figure.arch svg { max-height: 200mm; } "
+        "figure_css": "figure.arch { page-break-before: auto; page-break-after: auto; } "
+                      "figure.arch svg { max-height: 200mm; } "
+                      'h2[id="2-arquitectura-v2"] { page-break-before: always; } '
                       "section#execution, section#decisions { page-break-before: auto; margin-top: 1.4rem; }",
         "parts": [
         ("", DOCS / "entrega-2.md"),
