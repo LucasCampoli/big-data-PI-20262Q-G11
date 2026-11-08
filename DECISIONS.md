@@ -112,7 +112,8 @@ archivo por micro-batch y partición tocada, y cada archivo de la fuente abarca 
 evento distintas.
 
 Decisión. Particionar por una sola columna de fecha, dejando `service` y `region` como columnas.
-Bronze usa `ingest_date` y Silver usa `event_date`. Gold particiona por `usage_date`, que es la
+Bronze usa `ingest_date` para los eventos y para los seis maestros que llegan como snapshot, y
+`month` para la facturación. Silver usa `event_date`. Gold particiona por `usage_date`, que es la
 misma fecha del evento con el nombre que le da el grano del mart (`org_id`, `usage_date`,
 `service`). Silver y Gold se reconstruyen en batch con `coalesce` por partición. La retención de
 Bronze se mide sobre `ingest_date`.
@@ -124,7 +125,10 @@ arregla porque cada micro-batch escribe en todas esas particiones a la vez. Part
 un job de compactación posterior agrega un job cuyo único objetivo es deshacer una elección que somos
 libres de no tomar.
 
-Consecuencias. Las consultas por rango de fechas podan particiones y los filtros por servicio se
+Consecuencias. En los maestros, cada snapshot queda en la partición del día en que se cargó: la
+retención de 90 días borra directorios enteros, un snapshot nuevo no se mezcla con el anterior y
+Silver se queda con la última fila por clave (D13). Las consultas por rango de fechas podan
+particiones y los filtros por servicio se
 apoyan en las estadísticas de row group. Consultar Bronze por tiempo de evento requiere un scan
 completo, que es aceptable porque Bronze no es una capa de consulta. Una retención de Bronze medida
 sobre `event_date` ya habría vencido todas las filas de este dataset de 2025. Esto también es un
@@ -412,6 +416,8 @@ Decisión. `STREAM_TRIGGER=available_now` es el valor por defecto: la query cons
 archivos pendientes en micro-batches de `maxFilesPerTrigger` (10 archivos, 3.600 eventos) y se
 detiene. `STREAM_TRIGGER=processing_time` deja la misma query corriendo con
 `processingTime="1 minute"`, que es el modo continuo del diseño. La lógica no cambia entre los dos.
+La fuente lee solo `*.jsonl` (`pathGlobFilter`): un archivo copiado desde Windows trae al lado un
+`:Zone.Identifier`, y sin el filtro la query lo intenta leer como JSON y falla con `FAILED_READ_FILE`.
 
 Hay dos queries sobre la misma fuente, cada una con su `queryName` y su checkpoint propio:
 `bronze_usage_events` y `quarantine_usage_events_parse`. Una falla de parseo se clasifica como

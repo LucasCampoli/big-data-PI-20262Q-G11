@@ -20,6 +20,7 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 | La vista intradía provisoria (speed layer) no está, y sale del diagrama | la entrega 2 pide el mart diario; queda en el backlog | D3 |
 | El streaming corre con `availableNow` y `processingTime="1 minute"` queda como modo continuo | el pipeline se corre entero, se re-ejecuta y se muestra en vivo | D14 |
 | Gold particiona por `usage_date` | es la fecha del evento con el nombre del grano del mart | D5 |
+| Los maestros de Bronze particionan por `ingest_date` | cada snapshot queda en el día en que se cargó y la retención borra directorios enteros | D5 |
 | La carga a Cassandra usa el driver de Python desde `foreachPartition` | el conector oficial no tiene versión para Spark 4 | D16 |
 | Quarantine son cuatro tablas, una por escritor, con `rule_name` | el sink del stream es dueño de su carpeta y las reglas se reconstruyen | D15 |
 | Nueva regla de rechazo `resource_org_mismatch` | un recurso de otra organización es una contradicción entre claves | D6 |
@@ -59,10 +60,11 @@ termina con código 1 si alguna etapa falla.
 La carga batch lee cada CSV con su `StructType`, compara el encabezado con el esquema
 (`enforceSchema=false`) y manda a Quarantine, con la línea cruda, lo que no parsea. Agrega
 `ingest_ts`, `ingest_date` y `source_file` (desde `_metadata.file_name`). Billing particiona por
-`month` y los maestros quedan sin particionar (D5).
+`month` y los otros seis maestros por `ingest_date`, una partición por snapshot cargado (D5).
 
-El streaming son dos queries sobre el mismo directorio, cada una con su `queryName` y su checkpoint.
-La de Bronze separa primero las fallas de parseo, después hace
+El streaming son dos queries sobre el mismo directorio, cada una con su `queryName` y su checkpoint,
+que leen solo los `*.jsonl` (`pathGlobFilter`), así un `:Zone.Identifier` copiado desde Windows no
+corta el stream (D14). La de Bronze separa primero las fallas de parseo, después hace
 `withWatermark("ingest_ts", "1 hour")` y `dropDuplicatesWithinWatermark` sobre la clave de dedupe, y
 escribe un archivo por micro-batch. Sobre los datos reales:
 
@@ -288,16 +290,17 @@ guarda los conteos después de cada una (`counts_run_1.json`, `counts_run_2.json
 
 ## 8. Pruebas, configuración y errores
 
-`make test` corre 43 pruebas con Spark local y sin Cassandra: esquemas sobre la muestra, carga batch
+`make test` corre 44 pruebas con Spark local y sin Cassandra: esquemas sobre la muestra, carga batch
 (cuarentena de una fila mala, registro, encabezado que no coincide), streaming (separación antes del
-dedupe, nada perdido por el watermark, re-ejecución vacía), cada regla de calidad sobre los
+dedupe, nada perdido por el watermark, re-ejecución vacía, un `:Zone.Identifier` en la fuente), cada regla de calidad sobre los
 fixtures, Silver de punta a punta, la semántica de nulos de Gold y su conciliación, las anomalías
 (MAD, caída a la desviación media, historia mínima, ventana que solo mira hacia atrás) y el parseo
 de los CQL, la verificación de Java y la sal obligatoria del hash de emails.
 
 La configuración vive en `config/pipeline.env`, copiado de `config/pipeline.env.example`, y cada
 variable se puede pisar desde el entorno. El pipeline acepta Java 17, 21 o 25; la evidencia se
-generó con 21, y con 25 pasan `make check` y las 43 pruebas. Los errores esperables (otra
+generó con 21. Con 25 corrimos `make check` y 43 de las pruebas, todas en verde; la del
+`:Zone.Identifier` solo la corrimos con 21. Los errores esperables (otra
 versión de Java, `PII_HASH_SALT` sin definir, Landing incompleto, encabezado CSV distinto del
 esquema, Gold que no concilia, Cassandra o AstraDB inaccesibles o sin credenciales) cortan la
 corrida con un mensaje en el log y código 1.
