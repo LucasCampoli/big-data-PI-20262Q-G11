@@ -11,7 +11,7 @@ diseño: [`docs/design.md`](docs/design.md).
 | :-- | :--- | :--- |
 | D1 | Un único esquema explícito que cubre las dos versiones de evento | Aceptada |
 | D2 | Leer `value` como string en Bronze y castear en Silver con `try_cast` | Aceptada |
-| D3 | Híbrido estilo Lambda, con un speed layer sin ventanas (diferido) | Aceptada |
+| D3 | Híbrido estilo Lambda, con un speed layer sin ventanas | Aceptada. Entrega 2: batch layer más ingesta streaming a Bronze; speed layer diferido, latencia de Gold D+1 |
 | D4 | Cinco zonas, Parquet con Snappy | Aceptada |
 | D5 | Una sola columna de fecha, `ingest_date` en Bronze y `event_date` en Silver | Aceptada |
 | D6 | Política de calidad: primero imputar | Aceptada |
@@ -74,19 +74,24 @@ reemplaza los números provisorios por los definitivos. Los maestros y la factur
 Alternativas. Batch puro incumple el requisito de near real-time y la capacidad obligatoria de
 Structured Streaming del §4.4. Kappa puro falla por dos lados: los maestros son snapshots periódicos
 y la facturación es mensual, sin ninguna necesidad de latencia, y calcular el Gold diario en streaming
-o descarta el 97,5% de los eventos con un watermark de un día, o necesita un watermark de 60 días
-manteniendo estado de todo el período. Un streaming que se detiene en Bronze y no sirve nada deja el
-§2.1 sin respuesta y convierte el diseño en batch con un cargador de streaming, no en Lambda. Una
-agregación con estado en lugar de `foreachBatch` tendría que guardar 60 días de ventanas para no
-perder eventos tardíos.
+o descarta entre el 90% y el 97,5% de los eventos con un watermark de un día (según cuántos archivos
+entren en cada micro-batch, `stream_bronze.md`), o necesita un watermark de 60 días manteniendo
+estado de todo el período. Un streaming que solo escribe Bronze resuelve la ingesta continua, pero no
+da costo ni requests antes de la corrida batch, y esa parte del §2.1 queda sin cubrir mientras no
+exista el speed layer. Una agregación con estado en lugar de `foreachBatch` tendría que guardar 60
+días de ventanas para no perder eventos tardíos.
 
 Consecuencias. Dos caminos de ejecución para operar, y costo y requests se calculan en los dos, así
 que pueden no coincidir entre el último micro-batch y la siguiente corrida de batch. Solo esas dos
 medidas están duplicadas, el número provisorio se sirve marcado como provisorio, y en D+1 gana el
 valor del batch. Mantener las dos definiciones alineadas es trabajo manual, y por eso el speed layer
-se limita a dos medidas. Los marts finales están tan frescos como la agenda del batch, O1. Para la
-entrega 1 la vista provisoria es solo diseño y queda en el backlog como trabajo posterior a la
-entrega 2, que pide el mart diario.
+se limita a dos medidas. Los marts finales están tan frescos como la agenda del batch, O1.
+
+Estado en la entrega 2. Está implementado el batch layer completo (Silver, Gold, anomalías y la
+carga a Cassandra) y la ingesta streaming a Bronze y Quarantine, con watermark, dedupe y
+checkpoints. La vista intradía provisoria del speed layer está diferida al final, como deseable del
+backlog. Hasta que exista, la latencia de Gold y de Cassandra es D+1: un evento que entra a Bronze
+llega al mart en la próxima corrida batch.
 
 ## D4. Cinco zonas, Parquet con Snappy
 
@@ -218,8 +223,10 @@ Bronze sin ningún watermark.
 Alternativas. Corregir filas dentro de Landing destruye la única base reproducible. Hacer append y una
 pasada de dedupe después hace que la corrección dependa de que un job de limpieza haya corrido, y la
 ventana entre los dos es visible para los consumidores. Sobre la columna del watermark, uno por tiempo
-de evento de 1 a 7 días borraría del 87,6% al 97,5% de los eventos de Bronze, la zona cuyo trabajo es
-ser una copia fiel, y uno de 60 días los conservaría pero mantendría 60 días de `event_id` en estado:
+de evento de 1 a 7 días borraría entre el 81% y el 90% de los eventos de Bronze con los micro-batches
+de 10 archivos que usamos, y entre el 88% y el 97,5% con un archivo por micro-batch
+(`stream_bronze.md`), y Bronze es la zona cuyo trabajo es ser una copia fiel. Uno de 60 días los
+conservaría pero mantendría 60 días de `event_id` en estado:
 trivial con las 43.200 claves de hoy, y 2,6 billones (2,6 × 10¹²) en la proyección del §2.1.
 
 Consecuencias. Landing no se vence nunca, lo que cuesta almacenamiento, y a cambio Bronze se puede

@@ -34,10 +34,11 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 
 ![Cloud Provider Analytics, arquitectura v2, 2026-11-08](architecture_v2.svg)
 
-La figura muestra solo lo que corre. El patrón sigue siendo un híbrido estilo Lambda (D3): el
-streaming hace append a Bronze y todo lo demás es batch, porque un watermark sobre el tiempo del
-evento descartaría casi todos los eventos (§4.1 del diseño). La vista intradía provisoria del speed
-layer no está implementada y por eso no aparece. El serving tiene dos destinos probados con el
+La figura muestra solo lo que corre. El diseño es el híbrido estilo Lambda de D3, y en esta entrega
+están implementados el batch layer y la ingesta streaming a Bronze. El streaming hace append a
+Bronze y todo lo demás es batch, porque un watermark sobre el tiempo del evento descartaría casi
+todos los eventos (§3.1). El speed layer, la vista intradía provisoria, está diferido y no aparece en
+la figura, así que la latencia de Gold y de Cassandra es D+1. El serving tiene dos destinos probados con el
 mismo cargador (D16): Cassandra 5.0 en Docker, que es el principal, y AstraDB, que se elige por
 configuración.
 
@@ -77,11 +78,29 @@ escribe un archivo por micro-batch. Sobre los datos reales:
 | re-ejecución con el mismo checkpoint | 0 filas leídas |
 | experimento con watermark de 2 s | 0 descartadas, estado máximo 24.480 claves, 24.480 liberadas |
 
-El experimento (`make stream-state-demo`) es la prueba empírica de D8: el estado se libera a medida
-que avanza el watermark y Bronze sigue recibiendo todos los eventos. La late data se mide contra el
-tiempo del evento: con un watermark de 1 día sobre `timestamp`, el 97,5% de los eventos (42.118)
-habría sido tardío. Bronze los conserva todos y Silver ubica cada uno en su `event_date`
-(`stream_bronze.md`).
+El experimento (`make stream-state-demo`, 4 archivos por micro-batch) es la prueba empírica de D8:
+el estado se libera a medida que avanza el watermark y Bronze sigue recibiendo todos los eventos.
+Como el watermark avanza con `ingest_ts`, el estado máximo depende del reloj y cambia entre
+corridas. Lo que no cambia es que no se descarta ningún evento.
+
+El stream no maneja late data. El watermark va sobre `ingest_ts`, que se sella al leer, así que
+ningún evento llega tarde contra él, y solo acota cuánto tiempo el dedupe recuerda un `event_id`.
+El late data se resuelve después: Bronze conserva todos los eventos y Silver ubica cada uno en la
+partición de su `event_date`. Para medir cuánto late data hay, `stream_bronze.md` vuelve a pasar
+Bronze por un watermark sobre `timestamp`, con un archivo por micro-batch y con los 12
+micro-batches reales de la corrida:
+
+| Watermark sobre `timestamp` | Tardíos con 1 archivo por micro-batch | Tardíos con 10 archivos (corrida real) |
+| :--- | ---: | ---: |
+| 1 día | 42.118 (97,5%) | 38.940 (90,1%) |
+| 7 días | 37.831 (87,6%) | 34.984 (81,0%) |
+
+Con 10 archivos el watermark avanza una vez cada 10 partes y los eventos de un mismo micro-batch no
+se comparan entre sí, por eso hay menos tardíos. Spark arma los micro-batches por fecha de
+modificación de los archivos, que depende de cómo se copió el dataset: en nuestra copia
+`events_part_0045` entró en el primero. Con bloques de 10 por nombre el resultado es 38.935, cinco
+eventos menos. Cada micro-batch se identifica en Bronze por su `ingest_ts`, así que el cálculo sale
+de `make evidence`.
 
 ### 3.2 Silver
 
@@ -156,9 +175,9 @@ El inventario completo, con filas y bytes por tabla, está en `lake_inventory.md
 
 Las tres reglas de la consigna se cumplen en Silver: 0 `event_id` nulos y 0 duplicados, 211 costos
 negativos marcados, y los 42.323 eventos con `value` tienen `unit`, o sea el 100% después de la
-imputación. Quarantine queda en 0% de los eventos y 0% del costo, contra el 1% de O3. Los datos
-reales no rechazan nada, así que las muestras salen de los fixtures de `tests/fixtures/landing/`,
-que ejercitan cada regla con un lake aparte (D10). Tres filas de Quarantine, recortadas:
+imputación. Quarantine queda en 0% de los eventos y 0% del costo, contra el 1% de O3. Con los datos
+reales Quarantine queda vacía, así que las muestras salen de los fixtures de `tests/fixtures/landing/`,
+que ejercitan cada regla con un lake aparte (D10). En la demo se muestran con `make fixtures`. Tres filas de Quarantine, recortadas:
 
 | Tabla | `rule_name` | `source_file` | `raw_record` |
 | :--- | :--- | :--- | :--- |
