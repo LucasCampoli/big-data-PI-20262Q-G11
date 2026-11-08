@@ -52,7 +52,8 @@ def connection_settings(cfg: Config) -> dict:
     if cfg.serving_target == "cassandra":
         return {"target": "cassandra", "hosts": cfg.cassandra_hosts, "port": cfg.cassandra_port,
                 "username": cfg.cassandra_username, "password": cfg.cassandra_password,
-                "keyspace": cfg.cassandra_keyspace, "consistency": cfg.cassandra_consistency}
+                "keyspace": cfg.cassandra_keyspace, "consistency": cfg.cassandra_consistency,
+                "local_dc": cfg.cassandra_local_dc}
     raise PipelineError(f"SERVING_TARGET must be cassandra, astra or none, not {cfg.serving_target!r}")
 
 
@@ -60,9 +61,14 @@ def connect(settings: dict):
     from cassandra import ConsistencyLevel
     from cassandra.auth import PlainTextAuthProvider
     from cassandra.cluster import EXEC_PROFILE_DEFAULT, Cluster, ExecutionProfile
+    from cassandra.policies import DCAwareRoundRobinPolicy, TokenAwarePolicy
 
+    # LOCAL_QUORUM only means something against a named local DC. AstraDB takes its DC and policy
+    # from the secure connect bundle.
+    policy = ({"load_balancing_policy": TokenAwarePolicy(DCAwareRoundRobinPolicy(local_dc=settings["local_dc"]))}
+              if settings["target"] == "cassandra" else {})
     profile = ExecutionProfile(consistency_level=ConsistencyLevel.name_to_value[settings["consistency"]],
-                               request_timeout=30)
+                               request_timeout=30, **policy)
     auth = (PlainTextAuthProvider(settings["username"], settings["password"])
             if settings.get("username") else None)
     kwargs = {"execution_profiles": {EXEC_PROFILE_DEFAULT: profile}, "auth_provider": auth,

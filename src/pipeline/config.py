@@ -58,6 +58,7 @@ class Config:
     cassandra_username: str = ""
     cassandra_password: str = ""
     cassandra_consistency: str = "LOCAL_QUORUM"
+    cassandra_local_dc: str = "dc1"
     astra_bundle: str = ""
     astra_token: str = ""
     anomaly_threshold: float = 3.5
@@ -89,6 +90,7 @@ class Config:
             cassandra_username=_env("CASSANDRA_USERNAME"),
             cassandra_password=_env("CASSANDRA_PASSWORD"),
             cassandra_consistency=_env("CASSANDRA_CONSISTENCY", "LOCAL_QUORUM"),
+            cassandra_local_dc=_env("CASSANDRA_LOCAL_DC", "dc1"),
             astra_bundle=_env("ASTRA_SECURE_CONNECT_BUNDLE"),
             astra_token=_env("ASTRA_TOKEN"),
             anomaly_threshold=float(_env("ANOMALY_THRESHOLD", "3.5")),
