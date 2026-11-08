@@ -13,7 +13,7 @@ de YARN a la escala proyectada del apéndice A del diseño. El detalle por corri
 | `spark.sql.shuffle.partitions` | 8 | con 200 (el valor por defecto) cada agregación lanza 200 tareas casi vacías. 8 son dos rondas de 4 slots, y AQE junta las que quedan chicas |
 | AQE | activado | coalesce de particiones de shuffle después de medir el tamaño real |
 | Archivos por partición | 1 (`FILES_PER_PARTITION`) | un archivo de 10 a 150 KB por día o por micro-batch (design §5.1) |
-| Java | JDK 21 (`PIPELINE_JAVA_HOME`) | Spark 4.2 soporta 17 y 21 |
+| Java | JDK 21 (`PIPELINE_JAVA_HOME`) | Spark 4.2 corre sobre 17, 21 y 25; el pipeline acepta los tres, y la evidencia se generó con 21 |
 
 ## Jobs y lo que midió la primera corrida
 

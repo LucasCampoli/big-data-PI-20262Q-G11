@@ -1,7 +1,7 @@
 # Cloud Provider Analytics, entrega 2
 
 Proyecto integrador de Big Data, ITBA, segundo cuatrimestre 2026.
-Segunda entrega: implementación técnica y MVP end-to-end mínimo. Versión 1, 2026-11-05.
+Segunda entrega: implementación técnica y MVP end-to-end mínimo. Versión 1, 2026-11-08.
 
 Grupo 11: Ivan Odzomek, Lucas Campoli, Matias Sapino, Diego Rabinovich, Diego Badin.
 
@@ -31,7 +31,7 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 
 ## 2. Arquitectura v2
 
-![Cloud Provider Analytics, arquitectura v2, 2026-11-04](architecture_v2.svg)
+![Cloud Provider Analytics, arquitectura v2, 2026-11-08](architecture_v2.svg)
 
 La figura muestra solo lo que corre. El patrón sigue siendo un híbrido estilo Lambda (D3): el
 streaming hace append a Bronze y todo lo demás es batch, porque un watermark sobre el tiempo del
@@ -120,7 +120,7 @@ El plan físico (`gold_explain.txt`) es el job de MapReduce del §7:
 | :--- | :--- |
 | `Scan parquet` que lee 11 de las 28 columnas de Silver (poda de columnas) | input splits y lectura del map |
 | `HashAggregate` con `partial_sum` y `partial_count` | combiner, suma local por tarea |
-| `Exchange hashpartitioning(org_id, event_date, service, 8)` | partitioner y shuffle sobre la clave compuesta |
+| `Exchange hashpartitioning(org_id, event_date, service, 8)` | partitioner y shuffle sobre la clave compuesta. `event_date` es la columna de Silver; el alias `usage_date` se aplica recién en el `HashAggregate` final (`event_date AS usage_date`), así que es la misma fecha con el nombre del grano del mart |
 | `HashAggregate` con `sum` y `count` | reduce |
 | `AdaptiveSparkPlan` | AQE ajusta las particiones del shuffle después de medirlas |
 
@@ -156,8 +156,15 @@ Las tres reglas de la consigna se cumplen en Silver: 0 `event_id` nulos y 0 dupl
 negativos marcados, y los 42.323 eventos con `value` tienen `unit`, o sea el 100% después de la
 imputación. Quarantine queda en 0% de los eventos y 0% del costo, contra el 1% de O3. Los datos
 reales no rechazan nada, así que las muestras salen de los fixtures de `tests/fixtures/landing/`,
-que ejercitan cada regla con un lake aparte (D10). Las muestras, con su `raw_record`, están en
-`quarantine_samples.md`.
+que ejercitan cada regla con un lake aparte (D10). Tres filas de Quarantine, recortadas:
+
+| Tabla | `rule_name` | `source_file` | `raw_record` |
+| :--- | :--- | :--- | :--- |
+| `quarantine/usage_events_parse` | `parse_type_mismatch` | `events_fixture_0000.jsonl` | `{"event_id": "evt_fixture_ts", "timestamp": "not-a-timestamp", ...}`, la línea cruda |
+| `quarantine/usage_events_rules` | `value_not_castable` | `events_fixture_0000.jsonl` | `{"event_id":"evt_fixture_value", ..., "metric":"cpu_hours", "value":"n/a", "unit":"hours", ...}`, la fila de Bronze |
+| `quarantine/masters_rules` | `resolved_before_created` | `support_tickets.csv` | `{"ticket_id":"tkt_fixture02", ..., "created_at":"2025-07-05", "resolved_at":"2025-07-02", ...}` |
+
+Una muestra completa de cada regla, con su `raw_record`, está en `quarantine_samples.md`.
 
 ## 5. Serving en Cassandra y AstraDB
 
@@ -177,9 +184,36 @@ a unas 2.190 filas por año sin importar el tamaño de la organización, y no ha
 mes (D11). La carga verifica, organización por organización, filas y costo contra Gold. Las 80
 organizaciones y las 11.050 filas coinciden en las dos tablas.
 
-Para `org_okep7y6w`, Q1 sobre el 1 al 7 de agosto devuelve 25 filas, y Q2 sobre el 18 al 31 de
-agosto lee 54 filas y ordena genai (211,03 USD), storage (117,87) y database (90,88). Las salidas
-completas, por cqlsh y por el driver, están en `serving_q1_*`, `serving_q2_*` y `serving_q6_*`.
+Q1 para `org_okep7y6w` del 1 al 7 de agosto, como está en `cql/q1_daily_cost_by_service.cql` y
+como lo devuelve cqlsh (primeras filas de 25, `serving_q1_cqlsh.txt`):
+
+```text
+SELECT usage_date, service, daily_cost_usd, requests, events
+FROM cloud_analytics.org_daily_usage_by_service
+WHERE org_id = 'org_okep7y6w'
+  AND usage_date >= '2025-08-01' AND usage_date <= '2025-08-07';
+
+ usage_date | service    | daily_cost_usd | requests | events
+------------+------------+----------------+----------+--------
+ 2025-08-07 |    compute |       191.8968 |      212 |      3
+ 2025-08-07 | networking |         3.8985 |      378 |      6
+ 2025-08-06 | networking |         0.3809 |     null |      3
+(25 rows)
+```
+
+Q2 es la misma lectura con `usage_date` del 18 al 31 de agosto: 54 filas de la partición que el
+cliente suma y ordena (`serving_q2_driver.txt`):
+
+```text
+rank | service  | cost_14d_usd | days_with_usage
+-----+----------+--------------+----------------
+1    | genai    | 211.0267     | 10
+2    | storage  | 117.8743     | 13
+3    | database | 90.8801      | 9
+```
+
+El `null` de `requests` es un día sin requests medidos, no un cero (D6). Las salidas completas, por
+cqlsh y por el driver, están en `serving_q1_*`, `serving_q2_*` y `serving_q6_*`.
 
 AstraDB se probó con la misma carga, cambiando solo la conexión: `SERVING_TARGET=astra`, el secure
 connect bundle por ruta, el usuario `token` y el token como contraseña, todo por variables de entorno
@@ -253,17 +287,19 @@ guarda los conteos después de cada una (`counts_run_1.json`, `counts_run_2.json
 
 ## 8. Pruebas, configuración y errores
 
-`make test` corre 37 pruebas con Spark local y sin Cassandra: esquemas sobre la muestra, carga batch
+`make test` corre 43 pruebas con Spark local y sin Cassandra: esquemas sobre la muestra, carga batch
 (cuarentena de una fila mala, registro, encabezado que no coincide), streaming (separación antes del
 dedupe, nada perdido por el watermark, re-ejecución vacía), cada regla de calidad sobre los
 fixtures, Silver de punta a punta, la semántica de nulos de Gold y su conciliación, las anomalías
 (MAD, caída a la desviación media, historia mínima, ventana que solo mira hacia atrás) y el parseo
-de los CQL.
+de los CQL, la verificación de Java y la sal obligatoria del hash de emails.
 
 La configuración vive en `config/pipeline.env`, copiado de `config/pipeline.env.example`, y cada
-variable se puede pisar desde el entorno. Los errores esperables (Java distinto de 17 o 21, Landing
-incompleto, encabezado CSV distinto del esquema, Gold que no concilia, Cassandra inaccesible,
-AstraDB sin credenciales) cortan la corrida con un mensaje en el log y código 1.
+variable se puede pisar desde el entorno. El pipeline acepta Java 17, 21 o 25; la evidencia se
+generó con 21 y el check y las pruebas de Spark también pasan con 25. Los errores esperables (otra
+versión de Java, `PII_HASH_SALT` sin definir, Landing incompleto, encabezado CSV distinto del
+esquema, Gold que no concilia, Cassandra o AstraDB inaccesibles o sin credenciales) cortan la
+corrida con un mensaje en el log y código 1.
 
 ## 9. Gobierno y ejecución
 

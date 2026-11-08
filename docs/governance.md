@@ -57,7 +57,7 @@ Un número servido se rastrea hasta su archivo de origen con las columnas técni
 es la copia fiel de la fuente. Silver lo reemplaza por `email_hash`, un sha256 de una sal más el
 email normalizado, y `email_domain`. El hash sirve para contar y deduplicar usuarios sin exponer la
 dirección. La sal (`PII_HASH_SALT`) la genera `make setup` en `config/pipeline.env`, que no se
-commitea. Sin sal la corrida lo avisa en el log. Ningún mart ni tabla de Cassandra tiene datos
+commitea. Sin sal la corrida se detiene en `make check` y en Silver, antes de escribir `users`. Ningún mart ni tabla de Cassandra tiene datos
 personales.
 
 ## Credenciales y configuración

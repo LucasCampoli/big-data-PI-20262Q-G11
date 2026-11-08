@@ -22,7 +22,7 @@ serving en Cassandra.
 | :--- | :--- | :--- |
 | Linux o WSL2 con Ubuntu | Ubuntu 24.04 | |
 | Python | 3.12 | PySpark 4.2.0 y el driver de Cassandra |
-| JDK | 21 (17 también sirve) | Spark. Si el `java` por defecto es más nuevo, se indica la ruta en `PIPELINE_JAVA_HOME` |
+| JDK | 17, 21 o 25 (la evidencia se generó con 21) | Spark. La ruta se indica en `PIPELINE_JAVA_HOME` |
 | Docker con Compose v2 | Docker Desktop 4.86, Engine 29.7, Compose 5.3 | Cassandra 5.0 local |
 | make | GNU make 4 | los comandos |
 
@@ -131,7 +131,8 @@ consola para que se reanude.
 
 | Síntoma | Causa y arreglo |
 | :--- | :--- |
-| `Java 25 found ... pinned to JDK 17 or 21` | el `java` del PATH es otro: fijar `PIPELINE_JAVA_HOME` en `config/pipeline.env` |
+| `Java 11 found ... supports JDK 17, 21 or 25` | el `java` indicado es otra versión: fijar `PIPELINE_JAVA_HOME` en `config/pipeline.env` |
+| `PII_HASH_SALT is not set` | falta la sal del hash de emails: `make setup` la genera, o se define en `config/pipeline.env` |
 | `Landing at ... is incomplete` | faltan archivos en `data/landing/`, ver el paso 2 |
 | `cannot reach cassandra` | el contenedor no está arriba: `make cassandra-up` |
 | `make cassandra-up` tarda o el contenedor queda `unhealthy` | después de un apagado brusco Cassandra compacta varios minutos; esperar, o `make cassandra-down cassandra-up` |

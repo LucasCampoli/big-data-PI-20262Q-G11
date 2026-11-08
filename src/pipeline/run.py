@@ -33,6 +33,8 @@ def stage_check(ctx, metrics):
         raise PipelineError(f"Landing at {cfg.landing} is incomplete: missing {missing or 'event parts'}. "
                             "See README, section on getting the dataset")
     metrics["spark"] = ctx.spark.version
+    if not cfg.pii_hash_salt:
+        raise PipelineError("PII_HASH_SALT is not set: run make setup or set it in config/pipeline.env")
 
 
 STAGES = {

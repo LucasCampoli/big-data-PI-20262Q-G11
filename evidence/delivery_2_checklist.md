@@ -1,6 +1,6 @@
 # Checklist de la entrega 2
 
-Verificado el 2026-11-05 contra la consigna, sobre la evidencia de `make rerun-evidence`. La puerta
+Verificado el 2026-11-08 contra la consigna, sobre la evidencia de `make rerun-evidence`. La puerta
 de entrada es [`../docs/entrega-2.md`](../docs/entrega-2.md).
 
 ## Checklist §9.2

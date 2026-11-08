@@ -2,7 +2,7 @@
 
 Decisiones de diseño, con las alternativas que miramos y lo que cuesta cada una. D1 a D10 vienen de
 la entrega 1. D11 y D12 quedaron abiertas en la entrega 1 y se cierran con los datos de Gold. D13 a
-D17 son las que trajo la implementación. Fecha: 2026-11-04.
+D17 son las que trajo la implementación. Fecha: 2026-11-08.
 
 Las mediciones salen de [`evidence/landing_profile.md`](evidence/landing_profile.md). Documento de
 diseño: [`docs/design.md`](docs/design.md).
@@ -517,8 +517,8 @@ lo necesita. Lo que sí hace falta es contar y deduplicar usuarios por organizac
 Decisión. Bronze conserva el email tal como llega, porque es la copia fiel de la fuente y su acceso
 está restringido a ingesta. Silver lo reemplaza por `email_hash = sha256(sal + lower(trim(email)))`
 y `email_domain`, y descarta la columna original. La sal sale de `PII_HASH_SALT`, que `make setup`
-genera al azar en `config/pipeline.env`, fuera de git. Si falta, la corrida sigue y lo deja como
-warning en el log.
+genera al azar en `config/pipeline.env`, fuera de git. Si falta, la corrida se detiene: un hash
+sin sal no protege el dato.
 
 Alternativas. Enmascarar el email (`u***@example.com`) deja ver una parte de la dirección y no sirve
 como clave. Un sha256 sin sal se revierte con una lista de emails candidatos, y en este dataset

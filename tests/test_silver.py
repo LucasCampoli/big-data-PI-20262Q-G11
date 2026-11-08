@@ -90,3 +90,12 @@ def test_rebuild_does_not_duplicate_silver_or_quarantine(lake_ctx):
     after = {e: table(lake_ctx, z, e).count() for z, e in
              [("silver", "usage_events"), ("quarantine", "usage_events_rules"), ("quarantine", "masters_rules")]}
     assert before == after
+
+
+def test_silver_refuses_to_run_without_a_hash_salt(lake_ctx):
+    import dataclasses
+    from pipeline.errors import PipelineError
+    from pipeline.run import Context
+    unsalted = Context(dataclasses.replace(lake_ctx.cfg, pii_hash_salt=""), "test-run", lake_ctx.spark)
+    with pytest.raises(PipelineError, match="PII_HASH_SALT"):
+        silver.run(unsalted, {})

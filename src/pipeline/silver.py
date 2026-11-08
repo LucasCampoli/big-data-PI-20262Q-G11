@@ -118,6 +118,10 @@ def billing_monthly(df):
 
 def build_masters(ctx, metrics) -> dict:
     cfg = ctx.cfg
+    # Without a salt the email hash is reversible with a list of candidate addresses (D17), so
+    # Silver refuses to write users instead of publishing a weak pseudonym.
+    if not cfg.pii_hash_salt:
+        raise PipelineError("PII_HASH_SALT is not set: run make setup or set it in config/pipeline.env")
     out, rejected_frames = {}, []
     # customers_orgs first: users are checked against the organization's signup_date.
     transforms = {
@@ -149,8 +153,6 @@ def build_masters(ctx, metrics) -> dict:
             rejected_frames.append(quarantine.shape(rejected, entity, F.col("rule_name"), raw, ctx.run_id, ctx.run_ts))
 
     write_quarantine(ctx, rejected_frames, "masters_rules")
-    if not cfg.pii_hash_salt:
-        log.warning("PII_HASH_SALT is not set: users.email_hash is an unsalted sha256")
     return out
 
 

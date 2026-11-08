@@ -11,12 +11,17 @@ ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
 DELIVERY = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 DOCS = ROOT / "docs"
 DELIVERIES = {
-    1: {"svg": "architecture_v1.svg", "parts": [
+    1: {"svg": "architecture_v1.svg", "figure_css": "", "parts": [
         ("", DOCS / "design.md"),
         ("appendix", DOCS / "appendix.md"),
         ("decisions", ROOT / "DECISIONS.md"),
     ]},
-    2: {"svg": "architecture_v2.svg", "parts": [
+    # The v2 figure is shorter, so the text of §2 continues under it on the same page.
+    2: {"svg": "architecture_v2.svg",
+        # The execution sheet and the decisions index follow the governance matrix without a page break.
+        "figure_css": "figure.arch { page-break-after: auto; } figure.arch svg { max-height: 200mm; } "
+                      "section#execution, section#decisions { page-break-before: auto; margin-top: 1.4rem; }",
+        "parts": [
         ("", DOCS / "entrega-2.md"),
         ("governance", DOCS / "governance.md"),
         ("execution", DOCS / "execution_sheet.md"),
@@ -25,6 +30,7 @@ DELIVERIES = {
 }
 SVG = DELIVERIES[DELIVERY]["svg"]
 PARTS = DELIVERIES[DELIVERY]["parts"]
+FIGURE_CSS = DELIVERIES[DELIVERY]["figure_css"]
 
 def inline_svg(html: str) -> str:
     """Embed the architecture SVG so the file prints standalone."""
@@ -86,6 +92,7 @@ html = f"""<!doctype html>
   figure.arch svg {{ max-height: 258mm; max-width: 100%; height: auto; width: auto; }}
   section + section {{ page-break-before: always; }}
   a {{ color: #11457a; text-decoration: none; }}
+  {FIGURE_CSS}
 </style>
 {inline_svg("".join(body))}
 """

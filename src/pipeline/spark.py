@@ -12,7 +12,8 @@ from .errors import PipelineError
 
 log = logging.getLogger("pipeline.spark")
 
-SUPPORTED_JAVA = {17, 21}
+# Spark 4.2 runs on 17, 21 and 25; the delivery evidence was produced on 21.
+SUPPORTED_JAVA = {17, 21, 25}
 
 
 def java_major(java_home: str) -> tuple[int, str]:
@@ -20,7 +21,7 @@ def java_major(java_home: str) -> tuple[int, str]:
     try:
         out = subprocess.run([java, "-version"], capture_output=True, text=True, timeout=30).stderr
     except OSError as exc:
-        raise PipelineError(f"cannot run {java}: {exc}. Set PIPELINE_JAVA_HOME to a JDK 17 or 21") from exc
+        raise PipelineError(f"cannot run {java}: {exc}. Set PIPELINE_JAVA_HOME to a JDK 17, 21 or 25") from exc
     first = out.splitlines()[0] if out else ""
     match = re.search(r'version "(\d+)', first)
     if not match:
@@ -32,7 +33,7 @@ def check_java(cfg: Config) -> str:
     major, banner = java_major(cfg.java_home)
     if major not in SUPPORTED_JAVA:
         raise PipelineError(
-            f"Java {major} found at {cfg.java_home or 'PATH'}; the pipeline is pinned to JDK 17 or 21. "
+            f"Java {major} found at {cfg.java_home or 'PATH'}; the pipeline supports JDK 17, 21 or 25. "
             "Set PIPELINE_JAVA_HOME in config/pipeline.env")
     if cfg.java_home:
         os.environ["JAVA_HOME"] = cfg.java_home
