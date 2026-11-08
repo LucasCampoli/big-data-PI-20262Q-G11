@@ -104,11 +104,12 @@ STREAM_TRIGGER=processing_time make stream    # Ctrl+C lo detiene; el checkpoint
 
 ### AstraDB
 
-El mismo código carga y consulta AstraDB cambiando solo la conexión:
+El mismo código carga y consulta AstraDB cambiando solo la conexión. Lo probamos con el keyspace
+`cpa` (evidencia en `evidence/entrega-2/serving_astra.md`):
 
 1. Crear una cuenta en astra.datastax.com y una base Serverless en el free tier.
-2. Desde la consola de la base, en Keyspaces, crear el keyspace `cloud_analytics`. AstraDB no
-   acepta `CREATE KEYSPACE` por CQL.
+2. Desde la consola de la base, en Keyspaces, crear el keyspace del proyecto. AstraDB no acepta
+   `CREATE KEYSPACE` por CQL.
 3. Generar un token con el rol Database Administrator y descargar el secure connect bundle. Guardar
    los dos fuera del repo.
 4. Exportar las variables y correr:
@@ -116,7 +117,9 @@ El mismo código carga y consulta AstraDB cambiando solo la conexión:
 ```bash
 export SERVING_TARGET=astra
 export ASTRA_SECURE_CONNECT_BUNDLE=$HOME/secrets/secure-connect-cpa.zip
-export ASTRA_TOKEN='AstraCS:...'
+export ASTRA_TOKEN='<token de la consola>'
+export CASSANDRA_KEYSPACE=cpa                   # el keyspace creado en la consola
+PYTHONPATH=src .venv/bin/python -m pipeline.queries --keyspaces   # lista los keyspaces de la base
 make serve                                      # crea las tablas de cql/01_tables.cql y carga los dos marts
 PYTHONPATH=src .venv/bin/python -m pipeline.queries   # deja evidence/entrega-2/serving_q*_driver_astra.txt
 ```

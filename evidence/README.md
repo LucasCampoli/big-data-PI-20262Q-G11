@@ -32,8 +32,10 @@ reportes con `python -m pipeline.evidence report`.
 | `silver_quality.md` | las reglas de la consigna medidas en Silver, O3 y los flags de los maestros |
 | `quarantine_samples.md`, `fixtures_run.log` | filas en Quarantine por tabla y por regla, con una muestra cruda de cada regla |
 | `gold_marts.md`, `gold_reconciliation.json`, `gold_explain.txt`, `cost_anomaly_summary.json` | conciliación de Gold, plan físico de la agregación y resumen de anomalías |
-| `serving_q1_*.txt`, `serving_q2_*.txt`, `serving_q6_*.txt` | cada consulta por cqlsh y por el driver, con el CQL ejecutado |
+| `serving_q1_*.txt`, `serving_q2_*.txt`, `serving_q6_*.txt` | cada consulta por cqlsh y por el driver, con el CQL ejecutado; los `_driver_astra` corren contra AstraDB |
+| `serving_astra.md`, `astra_load_1.*`, `astra_load_2.*`, `counts_astra_load_*.json` | las dos cargas de Gold en AstraDB, sus logs y los conteos después de cada una |
 | `execution_profile.md` | jobs, stages, tareas y bytes de shuffle por etapa, desde el event log de Spark |
 | `delivery_2_checklist.md` | checklist §9.2 y criterios §6.4, en `evidence/` |
 
-En los archivos copiados de los logs, la ruta local del repo aparece como `<repo>`.
+En los archivos copiados de los logs, la ruta local del repo aparece como `<repo>`, y el token, el
+host de AstraDB y la ruta del bundle quedan enmascarados.

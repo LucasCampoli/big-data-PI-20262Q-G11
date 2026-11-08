@@ -491,10 +491,13 @@ terminar, la carga compara organización por organización cantidad de filas y c
 si no coinciden la corrida falla.
 
 El destino principal es Cassandra 5.0 en Docker (`infra/docker-compose.yml`). AstraDB es el segundo
-destino, con el mismo código: `SERVING_TARGET=astra` cambia solo la conexión (bundle y token por
-variables de entorno, fuera del repo) y saltea el `CREATE KEYSPACE`, que AstraDB no admite. Las
-consultas se corren con el driver (`python -m pipeline.queries`) y con cqlsh dentro del
-contenedor, desde los mismos archivos `cql/q*.cql`.
+destino, probado con el mismo código: `SERVING_TARGET=astra` cambia solo la conexión (bundle por
+ruta, usuario `token` y el token como contraseña, todo por variables de entorno y fuera del repo) y
+saltea el `CREATE KEYSPACE`, que AstraDB no admite. El keyspace del proyecto en AstraDB es `cpa`,
+creado desde la consola, y se elige con `CASSANDRA_KEYSPACE=cpa`. Las dos cargas de Gold dejaron
+11.050 filas en cada tabla y pasaron la verificación por organización. Las consultas se corren con
+el driver (`python -m pipeline.queries`) contra cualquiera de los dos destinos, y con cqlsh dentro
+del contenedor local, desde los mismos archivos `cql/q*.cql`.
 
 Alternativas. Bajar a PySpark 3.5 para usar el conector obligaba a instalar un JDK 17 y a cambiar la
 versión con la que se generó la evidencia de la entrega 1. Escribir con `foreachBatch` desde el
@@ -502,7 +505,9 @@ stream mezclaría el serving con la ingesta, y en D3 el serving sale del batch.
 
 Consecuencias. Un `None` se escribe como null, lo que en Cassandra deja un tombstone. Con miles de
 filas es despreciable, y es lo correcto: un día sin requests medidos tiene que leerse null y no 0.
-La carga no usa el particionado por token del conector, cosa que a esta escala no importa.
+La carga no usa el particionado por token del conector, cosa que a esta escala no importa. Contra
+AstraDB la carga tarda más (entre 45 y 60 segundos por tabla, contra unos 2 en local), porque cada escritura
+cruza internet con `LOCAL_QUORUM` sobre tres réplicas.
 
 ## D17. `users.email` se reemplaza en Silver por un hash con sal y el dominio
 

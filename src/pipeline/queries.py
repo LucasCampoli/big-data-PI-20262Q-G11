@@ -41,6 +41,8 @@ def report(title: str, settings: dict, stmt: str, body: str) -> str:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", help="directory for the output files (default: EVIDENCE_DIR)")
+    parser.add_argument("--keyspaces", action="store_true",
+                        help="only list the keyspaces of the target (on AstraDB they come from the console)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("cassandra").setLevel(logging.WARNING)
@@ -53,6 +55,11 @@ def main(argv=None) -> int:
     except Exception as exc:
         log.error("cannot connect: %s", exc)
         return 1
+    if args.keyspaces:
+        for r in session.execute("SELECT keyspace_name FROM system_schema.keyspaces"):
+            print(r.keyspace_name)
+        cluster.shutdown()
+        return 0
     suffix = "" if settings["target"] == "cassandra" else f"_{settings['target']}"
     try:
         stmt, rows = run_file(session, "q1_daily_cost_by_service.cql", settings["keyspace"])

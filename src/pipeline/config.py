@@ -11,7 +11,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPO_ROOT / "config" / "pipeline.env"
 
-SECRET_KEYS = {"astra_token", "cassandra_password", "pii_hash_salt"}
+# Secrets, and the bundle path, which is local and points at credentials: logged only as set/unset.
+SECRET_KEYS = {"astra_token", "astra_bundle", "cassandra_password", "pii_hash_salt"}
 
 
 def load_env_file(path: Path = ENV_FILE) -> bool:

@@ -6,6 +6,7 @@ python -m pipeline.evidence report           every report from the latest full r
 import argparse
 import dataclasses
 import json
+import re
 import logging
 import sys
 from datetime import datetime, timezone
@@ -26,9 +27,20 @@ FIXTURE_LAKE = "datalake/_fixtures"
 FIXTURE_LOGS = "logs/fixtures"
 
 
+def mask(text: str) -> str:
+    """What may not leave the machine: local paths, Astra tokens, and the database's id and host."""
+    text = text.replace(REPO_ROOT.as_uri(), "<repo>").replace(str(REPO_ROOT), "<repo>")
+    text = text.replace(str(Path.home()), "<home>")
+    # The prefix is split so this file never contains a token-shaped string itself.
+    text = re.sub("Astra" r"CS:[A-Za-z0-9:_\-]+", "<token>", text)
+    text = re.sub(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(-[a-z0-9-]+)?(\.db)?\.astra\.datastax\.com(:\d+)?",
+                  "<astra-host>", text)
+    return text
+
+
 def copy_clean(src: Path, dst: Path):
-    """Copy a log or plan into the evidence with the machine-specific repo path replaced."""
-    dst.write_text(src.read_text().replace(REPO_ROOT.as_uri(), "<repo>").replace(str(REPO_ROOT), "<repo>"))
+    """Copy a log or plan into the evidence with local paths and credentials masked."""
+    dst.write_text(mask(src.read_text()))
 
 
 def md_table(rows: list, columns: list) -> str:
@@ -419,6 +431,38 @@ def copy_run_logs(cfg: Config):
     return runs
 
 
+def astra_report(cfg: Config) -> str:
+    runs = [s for s in summaries(cfg.logs)
+            if s["config"]["serving_target"] == "astra" and stage_metrics(s, "serving")][-2:]
+    snaps = {p.stem.removeprefix("counts_"): json.loads(p.read_text())
+             for p in sorted(cfg.evidence.glob("counts_astra_load_*.json"))}
+    for i, run in enumerate(runs, 1):
+        for ext in ("log", "json"):
+            src = cfg.logs / f"{run['run_id']}.{ext}"
+            if src.exists():
+                copy_clean(src, cfg.evidence / f"astra_load_{i}.{ext}")
+    rows = []
+    for i, run in enumerate(runs, 1):
+        m = stage_metrics(run, "serving")
+        for table, _ in TABLES.values():
+            t = m.get(table, {})
+            after = (snaps.get(f"astra_load_{i}", {}).get("cassandra", {}).get(table) or {}).get("rows")
+            rows.append({"load": i, "run_id": run["run_id"], "table": table, "rows_upserted": t.get("rows_written"),
+                         "rows_in_astra_after": after, "gold_rows": t.get("gold_rows"),
+                         "per_org_check": "passed" if t.get("passed") else "failed"})
+    same = len(runs) == 2 and all(
+        r1["rows_in_astra_after"] == r2["rows_in_astra_after"] is not None
+        for r1, r2 in zip([r for r in rows if r["load"] == 1], [r for r in rows if r["load"] == 2]))
+    keyspace = runs[-1]["config"]["cassandra_keyspace"] if runs else "?"
+    return (header("Serving on AstraDB") +
+            f"Same loader as the local Cassandra (`SERVING_TARGET=astra`): secure connect bundle and token from "
+            f"environment variables, user `token`. Keyspace `{keyspace}`, created from the Astra console because "
+            "AstraDB has no CREATE KEYSPACE; the tables come from `cql/01_tables.cql`. Writes at LOCAL_QUORUM. "
+            "Token, database host and local paths are masked in every copied file.\n\n"
+            + md_table(rows, ["load", "run_id", "table", "rows_upserted", "rows_in_astra_after", "gold_rows", "per_org_check"])
+            + f"\n\nSame row counts after the second load: **{same}**. Query outputs: `serving_q*_driver_astra.txt`.\n")
+
+
 def report(spark, cfg: Config):
     cfg.evidence.mkdir(parents=True, exist_ok=True)
     for old in cfg.evidence.glob("run_*"):
@@ -435,6 +479,8 @@ def report(spark, cfg: Config):
     }
     if runs:
         files["execution_profile.md"] = execution_profile(cfg, runs)
+    if any(s["config"]["serving_target"] == "astra" for s in summaries(cfg.logs)):
+        files["serving_astra.md"] = astra_report(cfg)
     for name, text in files.items():
         if text:
             (cfg.evidence / name).write_text(text)

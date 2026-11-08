@@ -36,9 +36,9 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 La figura muestra solo lo que corre. El patrón sigue siendo un híbrido estilo Lambda (D3): el
 streaming hace append a Bronze y todo lo demás es batch, porque un watermark sobre el tiempo del
 evento descartaría casi todos los eventos (§4.1 del diseño). La vista intradía provisoria del speed
-layer no está implementada y por eso no aparece. AstraDB está soportado por configuración con el
-mismo cargador (D16), pero en esta entrega la carga y las consultas se ejecutaron sobre Cassandra
-local.
+layer no está implementada y por eso no aparece. El serving tiene dos destinos probados con el
+mismo cargador (D16): Cassandra 5.0 en Docker, que es el principal, y AstraDB, que se elige por
+configuración.
 
 | Etapa | Comando | Entrada | Salida |
 | :--- | :--- | :--- | :--- |
@@ -46,7 +46,7 @@ local.
 | Streaming | `make stream` | `usage_events_stream/*.jsonl` | `bronze/usage_events`, `quarantine/usage_events_parse` |
 | Silver | `make silver` | Bronze | `silver/*`, `quarantine/*_rules` |
 | Gold | `make gold` | Silver | `gold/org_daily_usage_by_service`, `gold/cost_anomaly_mart` |
-| Serving | `make serve` y `make queries` | Gold | 2 tablas en Cassandra, salidas de Q1, Q2 y Q6 |
+| Serving | `make serve` y `make queries` | Gold | 2 tablas en Cassandra y en AstraDB, salidas de Q1, Q2 y Q6 |
 
 `make run` corre todas las etapas en orden. Cada corrida tiene un `run_id`, escribe
 `logs/<run_id>.log` y un resumen JSON con la configuración, el commit y las métricas de cada etapa, y
@@ -159,10 +159,11 @@ reales no rechazan nada, así que las muestras salen de los fixtures de `tests/f
 que ejercitan cada regla con un lake aparte (D10). Las muestras, con su `raw_record`, están en
 `quarantine_samples.md`.
 
-## 5. Serving en Cassandra
+## 5. Serving en Cassandra y AstraDB
 
 Cassandra 5.0 corre en Docker (`infra/docker-compose.yml`). El keyspace y las tablas están en
-`cql/`, y las consultas en `cql/q*.cql`.
+`cql/`, y las consultas en `cql/q*.cql`. AstraDB es el segundo destino, con el mismo esquema y el
+mismo cargador.
 
 | Consulta | Tabla | Partition key | Clustering | Lectura |
 | :--- | :--- | :--- | :--- | :--- |
@@ -179,6 +180,20 @@ organizaciones y las 11.050 filas coinciden en las dos tablas.
 Para `org_okep7y6w`, Q1 sobre el 1 al 7 de agosto devuelve 25 filas, y Q2 sobre el 18 al 31 de
 agosto lee 54 filas y ordena genai (211,03 USD), storage (117,87) y database (90,88). Las salidas
 completas, por cqlsh y por el driver, están en `serving_q1_*`, `serving_q2_*` y `serving_q6_*`.
+
+AstraDB se probó con la misma carga, cambiando solo la conexión: `SERVING_TARGET=astra`, el secure
+connect bundle por ruta, el usuario `token` y el token como contraseña, todo por variables de entorno
+y fuera del repo. El keyspace `cpa` se creó desde la consola, porque AstraDB no admite
+`CREATE KEYSPACE`, y las tablas salen del mismo `cql/01_tables.cql`. Cargamos Gold dos veces:
+
+| Tabla en AstraDB | Primera carga | Segunda carga | Gold |
+| :--- | ---: | ---: | ---: |
+| `cpa.org_daily_usage_by_service` | 11.050 | 11.050 | 11.050 |
+| `cpa.cost_anomalies_by_org` | 11.050 | 11.050 | 11.050 |
+
+Q1, Q2 y Q6 devuelven sobre AstraDB los mismos resultados que en local (`serving_astra.md`,
+`serving_q*_driver_astra.txt`). En la evidencia copiada, el token, el host de la base y las rutas
+locales quedan enmascarados.
 
 ## 6. Analítica: anomalías de costo
 
@@ -265,7 +280,7 @@ La matriz de gobierno está en `docs/governance.md` y la ficha de ejecución en
 | Silver, eventos y un maestro, joins, 3 features | `src/pipeline/silver.py` | `silver_quality.md`, `data_dictionary.md` |
 | Calidad, 3 reglas y Quarantine con muestras | `src/pipeline/quality_rules.py`, `tests/fixtures/landing/` | `silver_quality.md`, `quarantine_samples.md` |
 | Gold `org_daily_usage_by_service` | `src/pipeline/gold.py` | `gold_marts.md`, `gold_reconciliation.json`, `gold_explain.txt` |
-| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_*.txt`, `serving_q2_*.txt` |
+| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_*.txt`, `serving_q2_*.txt`, `serving_astra.md` |
 | Analítica | `src/pipeline/anomalies.py` | `gold_marts.md`, `cost_anomaly_summary.json`, `serving_q6_*.txt` |
 | Idempotencia | `make rerun-evidence` | `idempotency.md`, `counts_run_*.json` |
 | Gobierno preliminar | `docs/governance.md`, D17 | `data_dictionary.md`, logs con secretos enmascarados |
@@ -281,7 +296,7 @@ El checklist §9.2 y los criterios §6.4, línea por línea, están en
 | :--- | :--- |
 | Obligatorio | marts `revenue_by_org_month`, `tickets_by_org_date` y `genai_tokens_by_org_date` en Gold, con sus tablas en Cassandra y las consultas Q3, Q4 y Q5 |
 | Obligatorio | confirmar con la cátedra si Q3 a Q5 son por organización o globales (§8.1 del diseño) |
-| Obligatorio | correr la carga y las consultas también sobre AstraDB y guardar la evidencia |
+| Obligatorio | cargar en AstraDB los marts nuevos del final, con sus consultas |
 | Obligatorio | presentación ejecutiva, video y guion de la defensa |
 | Deseable | vista intradía provisoria del speed layer con `foreachBatch` (D3, apéndice C) |
 | Deseable | job de retención para Bronze (90 días) y Quarantine (180 días) |

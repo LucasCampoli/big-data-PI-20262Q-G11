@@ -66,6 +66,11 @@
   <text class="t" x="360" y="743" text-anchor="middle">keyspace cloud_analytics · 2 tablas query-first</text>
   <text class="t" x="360" y="761" text-anchor="middle">partition key org_id, clustering usage_date DESC, service</text>
 
+  <rect class="plain" x="700" y="702" width="260" height="74" rx="6"/>
+  <text x="830" y="723" text-anchor="middle"><tspan class="h">AstraDB</tspan></text>
+  <text class="t" x="830" y="743" text-anchor="middle">mismo cargador, por configuración</text>
+  <text class="t" x="830" y="761" text-anchor="middle">keyspace cpa · mismas 2 tablas</text>
+
   <rect class="plain" x="60" y="810" width="600" height="50" rx="6"/>
   <text x="360" y="830" text-anchor="middle"><tspan class="h">Consumo</tspan></text>
   <text class="t" x="360" y="849" text-anchor="middle">Q1 y Q2 de FinOps · Q6 días anómalos · cqlsh y driver de Python</text>
@@ -94,6 +99,9 @@
   <path class="flow" d="M360,660 L360,700"/>
   <text class="lbl" x="370" y="685">foreachPartition con el driver, upsert por clave</text>
   <path class="flow" d="M360,776 L360,808"/>
+  <path class="flow" d="M660,640 L830,640 L830,700"/>
+  <text class="lbl" x="672" y="632">segundo destino, upsert</text>
+  <path class="flow" d="M830,776 L830,835 L662,835"/>
 
   <!-- Quality path -->
   <path class="dq" d="M675,280 L800,280 L800,468"/>

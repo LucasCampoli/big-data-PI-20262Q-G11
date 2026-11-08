@@ -1,0 +1,42 @@
+{
+  "label": "astra_load_2",
+  "taken_utc": "2026-11-08T19:44:11+00:00",
+  "last_full_run": "20261105T015842Z-bb0aea",
+  "lake_rows": {
+    "bronze/billing_monthly": 240,
+    "bronze/customers_orgs": 80,
+    "bronze/marketing_touches": 1500,
+    "bronze/nps_surveys": 92,
+    "bronze/resources": 400,
+    "bronze/support_tickets": 1000,
+    "bronze/usage_events": 43200,
+    "bronze/users": 800,
+    "silver/billing_monthly": 240,
+    "silver/customers_orgs": 80,
+    "silver/marketing_touches": 1500,
+    "silver/nps_surveys": 92,
+    "silver/resources": 400,
+    "silver/support_tickets": 1000,
+    "silver/usage_events": 43200,
+    "silver/users": 800,
+    "gold/cost_anomaly_mart": 11050,
+    "gold/org_daily_usage_by_service": 11050
+  },
+  "cassandra": {
+    "status": "ok",
+    "target": "astra",
+    "org_daily_usage_by_service": {
+      "partitions": 80,
+      "rows": 11050
+    },
+    "cost_anomalies_by_org": {
+      "partitions": 80,
+      "rows": 11050
+    }
+  },
+  "registry_files": 7,
+  "checkpoint_commits": {
+    "bronze_usage_events": 12,
+    "quarantine_usage_events_parse": 12
+  }
+}
