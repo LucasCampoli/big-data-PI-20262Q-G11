@@ -238,21 +238,35 @@ def stream_report(spark, cfg: Config) -> str:
                                    "state_rows_removed", "dropped_by_watermark", "watermark"]) + "\n\n")
     bronze_path = cfg.table("bronze", "usage_events")
     if lake.exists(bronze_path):
-        b = lake.read(spark, bronze_path)
-        per_file = b.groupBy("source_file").agg(F.max("timestamp").alias("max_ts"))
-        w = Window.orderBy("source_file").rowsBetween(Window.unboundedPreceding, -1)
-        seen = per_file.withColumn("prev_max", F.max("max_ts").over(w)).select("source_file", "prev_max")
-        joined = b.join(seen, "source_file")
+        b = lake.read(spark, bronze_path).cache()
+        total = b.count()
+        # Every row of a micro-batch carries the same ingest_ts, so it identifies the batches as run.
+        files_per_batch = b.groupBy("ingest_ts").agg(F.countDistinct("source_file").alias("files"))
+        n_batches, max_files = files_per_batch.agg(F.count("*"), F.max("files")).first()
+
+        def late_events(batch_col: str, days: int) -> int:
+            # A watermark on `timestamp` is the max event time of the earlier batches minus the
+            # delay; a row below it in a later batch would be dropped.
+            per_batch = b.groupBy(batch_col).agg(F.max("timestamp").alias("max_ts"))
+            w = Window.orderBy(batch_col).rowsBetween(Window.unboundedPreceding, -1)
+            seen = per_batch.withColumn("watermark", F.max("max_ts").over(w) - F.expr(f"INTERVAL {days} DAYS"))
+            return b.join(seen.select(batch_col, "watermark"), batch_col).filter(F.col("timestamp") < F.col("watermark")).count()
+
         late = []
         for days in (1, 7, 30):
-            n = joined.filter(F.col("timestamp") < F.col("prev_max") - F.expr(f"INTERVAL {days} DAYS")).count()
-            late.append({"event_time_watermark": f"{days} day(s)", "late_events": n,
-                         "late_pct": round(100 * n / b.count(), 1), "kept_in_bronze": "yes"})
-        text += ("## Late data\n\nReplaying the parts in file-name order, the events an event-time "
-                 "watermark would have called late. Bronze keeps all of them because its watermark is "
-                 f"on `ingest_ts`; Silver places each in its `event_date` partition. Bronze holds "
-                 f"{b.count():,} events.\n\n"
-                 + md_table(late, ["event_time_watermark", "late_events", "late_pct", "kept_in_bronze"]) + "\n")
+            one, run = late_events("source_file", days), late_events("ingest_ts", days)
+            late.append({"event_time_watermark": f"{days} day(s)",
+                         "late_one_file_per_batch": f"{one:,} ({100 * one / total:.1f}%)",
+                         "late_as_run": f"{run:,} ({100 * run / total:.1f}%)", "kept_in_bronze": "yes"})
+        b.unpersist()
+        text += ("## Late data\n\nThe events a watermark on the event `timestamp` would have called late, "
+                 "replaying Bronze two ways: one part per micro-batch in file-name order, and the "
+                 f"{n_batches} micro-batches of up to {max_files} parts that loaded this Bronze, as Spark "
+                 "formed them (in file modification order). Bronze keeps all "
+                 f"of them because its watermark is on `ingest_ts`; Silver places each in its `event_date` "
+                 f"partition. Bronze holds {total:,} events.\n\n"
+                 + md_table(late, ["event_time_watermark", "late_one_file_per_batch", "late_as_run",
+                                   "kept_in_bronze"]) + "\n")
     return text
 
 
