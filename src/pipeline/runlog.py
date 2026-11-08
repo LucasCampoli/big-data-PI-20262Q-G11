@@ -21,7 +21,10 @@ def git_commit() -> str:
     try:
         out = subprocess.run(["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
                              capture_output=True, text=True, timeout=10)
-        dirty = subprocess.run(["git", "-C", str(REPO_ROOT), "status", "--porcelain", "--untracked-files=no"],
+        # evidence/ is what the runs write: make rerun-evidence updates it between its two runs,
+        # and that must not mark the second run as built from modified code.
+        dirty = subprocess.run(["git", "-C", str(REPO_ROOT), "status", "--porcelain", "--untracked-files=no",
+                                "--", ".", ":(exclude)evidence"],
                                capture_output=True, text=True, timeout=10).stdout.strip()
         return out.stdout.strip() + ("-dirty" if dirty else "")
     except (OSError, subprocess.SubprocessError):
