@@ -3,7 +3,3 @@
 
 class PipelineError(RuntimeError):
     """A stage cannot run: missing input, wrong runtime, unreachable serving store."""
-
-
-class QualityGateError(PipelineError):
-    """A zone's promotion check failed, so nothing was published downstream."""

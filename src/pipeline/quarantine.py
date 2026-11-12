@@ -10,9 +10,6 @@ Tables, one writer each (a streaming sink owns its directory, so batch writers n
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 
-COLUMNS = ["entity", "rule_name", "raw_record", "source_file", "quarantined_ts", "run_id",
-           "quarantine_date"]
-
 
 def shape(df: DataFrame, entity: str, rule: Column, raw: Column, run_id: str, ts) -> DataFrame:
     quarantined_ts = F.lit(ts).cast("timestamp") if ts is not None else F.current_timestamp()

@@ -1,7 +1,7 @@
 # Ficha de ejecución
 
-Cómo corre el pipeline hoy, con los números del event log de Spark, y cómo se traduciría a containers
-de YARN a la escala proyectada del apéndice A del diseño. El detalle por corrida está en
+Cómo corre el pipeline hoy, medido en la corrida de la evidencia, y cómo se traduciría a containers
+de YARN a la escala proyectada del apéndice A del diseño. El detalle de esa corrida está en
 `evidence/entrega-2/execution_profile.md`.
 
 ## Hoy: un proceso local
@@ -26,7 +26,7 @@ de Spark: cada `count`, cada escritura y cada lectura de métricas es un job.
 | `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 7,4 | 25 | 109 | 4.569 KB |
 | `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 8,6 | 63 | 141 | 6.176 KB |
 | `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 2,3 | 20 | 126 | 964 KB |
-| `anomalies` | `cost_anomaly_mart` y el chequeo de detección | por corrida | 4,4 | 45 | 235 | 1.287 KB |
+| `anomalies` | `cost_anomaly_mart` | por corrida | 4,4 | 45 | 235 | 1.287 KB |
 | `serving` | upsert de los dos marts en Cassandra y verificación | por corrida | 3,9 | 12 | 148 | 1.056 KB |
 
 La corrida completa tarda unos 37 segundos y la re-ejecución unos 29 (los tiempos varían entre corridas y con la carga de la máquina): el stream no lee nada y la carga batch

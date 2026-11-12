@@ -32,7 +32,7 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 
 El §2.2 de la consigna pide un entorno equivalente a Colab. Corremos el mismo PySpark 4.2.0 fijado
 en `requirements.txt`, en modo `local[4]` sobre WSL2 con JDK 21, y lo validamos con `make check`,
-las 44 pruebas de `make test` y dos corridas completas desde un clon limpio, con los mismos conteos.
+las 39 pruebas de `make test` y dos corridas completas desde un clon limpio, con los mismos conteos.
 Cassandra corre en Docker y AstraDB se probó con el mismo código. No lo corrimos en Google Colab
 (D16).
 
@@ -105,8 +105,8 @@ Con 10 archivos el watermark avanza una vez cada 10 partes y los eventos de un m
 se comparan entre sí, por eso hay menos tardíos. Spark arma los micro-batches por fecha de
 modificación de los archivos, que depende de cómo se copió el dataset: en nuestra copia
 `events_part_0045` entró en el primero. Con bloques de 10 por nombre el resultado es 38.935, cinco
-eventos menos. Cada micro-batch se identifica en Bronze por su `ingest_ts`, así que el cálculo sale
-de `make evidence`.
+eventos menos. Cada micro-batch se identifica en Bronze por su `ingest_ts`. El detalle quedó en
+`stream_bronze.md`.
 
 ### 3.2 Silver
 
@@ -208,8 +208,8 @@ mismo cargador.
 Replicación local: `NetworkTopologyStrategy` con `dc1: 1`. En producción sería `dc1: 3` con
 `LOCAL_QUORUM` para leer y escribir. Una partición tiene como máximo 6 filas por día, así que crece
 a unas 2.190 filas por año sin importar el tamaño de la organización, y no hace falta un bucket por
-mes (D11). La carga verifica, organización por organización, filas y costo contra Gold. Las 80
-organizaciones y las 11.050 filas coinciden en las dos tablas.
+mes (D11). La carga compara la cantidad de filas escritas con las de Gold. Las 11.050 filas
+coinciden en las dos tablas.
 
 Q1 para `org_okep7y6w` del 1 al 7 de agosto, como está en `cql/q1_daily_cost_by_service.cql` y
 como lo devuelve cqlsh (primeras filas de 25, `serving_q1_cqlsh.txt`):
@@ -271,8 +271,7 @@ las alternativas están en D12.
 | organizaciones con al menos un día marcado | 69 de 80 |
 | caso más alto | `org_okep7y6w`, compute, 2025-08-07: 191,90 USD contra una mediana de 11,27 (score 106,5) |
 
-Para saber qué hace el método con los días que un umbral fijo llamaría extremos, el resumen incluye
-un chequeo de detección (`gold_marts.md`, `cost_anomaly_summary.json`):
+Comparamos el mart con los días que un umbral fijo llamaría extremos:
 
 | Días | Total | Marcados | Puntuados sin marcar | Sin historia |
 | :--- | ---: | ---: | ---: | ---: |
@@ -286,7 +285,7 @@ un chequeo de detección (`gold_marts.md`, `cost_anomaly_summary.json`):
 | negativo y marcado | `org_0lvsnujz`, analytics, 2025-08-24: -134,24 USD, mediana 15,61, score -10,6 | corrección fuera de escala |
 | negativo sin marcar | `org_dhylurtp`, compute, 2025-07-27: -9,00 USD, mediana 19,52, score -1,83 | dentro de la variación de la serie |
 
-Hay tres ejemplos de cada caso en `gold_marts.md`. Que un día caro no se marque es lo esperado de un método relativo: un monto alto para una
+Que un día caro no se marque es lo esperado de un método relativo: un monto alto para una
 organización grande no es raro. Los costos negativos chicos ya quedan cubiertos por el
 `cost_anomaly_flag` de cada evento y por `negative_cost_events` en el mart, y el score marca solo los
 que se salen de su serie. Los días sin historia son la limitación más concreta: explican 30 de los
@@ -302,8 +301,8 @@ que segmente organizaciones por perfil de uso (D12).
 ## 7. Idempotencia
 
 `make rerun-evidence` resetea el lake y el keyspace, corre el pipeline completo dos veces seguidas y
-guarda los conteos después de cada una (`counts_run_1.json`, `counts_run_2.json`,
-`idempotency.md`).
+guarda los conteos en `counts_run_1.json` y `counts_run_2.json`. La comparación de esa corrida está
+en `idempotency.md`.
 
 | Mecanismo | Qué protege | Resultado de la segunda corrida |
 | :--- | :--- | :--- |
@@ -315,12 +314,12 @@ guarda los conteos después de cada una (`counts_run_1.json`, `counts_run_2.json
 
 ## 8. Pruebas, configuración y errores
 
-`make test` corre 44 pruebas con Spark local y sin Cassandra: esquemas sobre la muestra, carga batch
+`make test` corre 39 pruebas con Spark local y sin Cassandra: esquemas sobre la muestra, carga batch
 (cuarentena de una fila mala, registro, encabezado que no coincide), streaming (separación antes del
 dedupe, nada perdido por el watermark, re-ejecución vacía, un `:Zone.Identifier` en la fuente), cada regla de calidad sobre los
 fixtures, Silver de punta a punta, la semántica de nulos de Gold y su conciliación, las anomalías
 (MAD, caída a la desviación media, historia mínima, ventana que solo mira hacia atrás) y el parseo
-de los CQL, la verificación de Java y la sal obligatoria del hash de emails.
+de los CQL y la sal obligatoria del hash de emails.
 
 La configuración vive en `config/pipeline.env`, copiado de `config/pipeline.env.example`, y cada
 variable se puede pisar desde el entorno. El pipeline acepta Java 17, 21 o 25; la evidencia se

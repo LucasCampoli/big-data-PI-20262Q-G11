@@ -17,9 +17,8 @@ Los tres perfiles salen de `notebooks/01_landing_exploration.ipynb`.
 
 ## Entrega 2, `entrega-2/`
 
-Todo sale de `make rerun-evidence`, que resetea el lake y el keyspace, corre el pipeline completo
-dos veces seguidas, corre el experimento de estado, los fixtures y las consultas, y regenera los
-reportes con `python -m pipeline.evidence report`.
+Los reportes de abajo son la salida de las corridas de la entrega. `make rerun-evidence` vuelve a
+correr el pipeline dos veces y refresca `counts_run_1.json` y `counts_run_2.json`.
 
 | Archivo | Contenido |
 | :--- | :--- |
@@ -27,14 +26,14 @@ reportes con `python -m pipeline.evidence report`.
 | `run_2_<run_id>.log`, `run_2_<run_id>.json` | lo mismo para la re-ejecución |
 | `counts_run_1.json`, `counts_run_2.json`, `idempotency.md` | filas por tabla del lake y de Cassandra después de cada corrida, y la comparación |
 | `lake_inventory.md` | rutas, filas, archivos, particiones y bytes de cada tabla |
-| `data_dictionary.md` | esquema de cada tabla leído desde el Parquet, con notas de las columnas técnicas |
+| `data_dictionary.md` | esquema de cada tabla, escrito a partir del lake de la corrida de evidencia |
 | `stream_bronze.md`, `run_*_stream_progress.jsonl`, `stream_state_demo_progress.jsonl` | progreso de cada micro-batch, el experimento con watermark de 2 s y la medición de late data |
 | `silver_quality.md` | las reglas de la consigna medidas en Silver, O3 y los flags de los maestros |
 | `quarantine_samples.md`, `fixtures_run.log` | filas en Quarantine por tabla y por regla, con una muestra cruda de cada regla |
 | `gold_marts.md`, `gold_reconciliation.json`, `gold_explain.txt`, `cost_anomaly_summary.json` | conciliación de Gold, plan físico de la agregación y resumen de anomalías |
 | `serving_q1_*.txt`, `serving_q2_*.txt`, `serving_q6_*.txt` | cada consulta por cqlsh y por el driver, con el CQL ejecutado; los `_driver_astra` corren contra AstraDB |
 | `serving_astra.md`, `astra_load_1.*`, `astra_load_2.*`, `counts_astra_load_*.json` | las dos cargas de Gold en AstraDB, sus logs y los conteos después de cada una |
-| `execution_profile.md` | jobs, stages, tareas y bytes de shuffle por etapa, desde el event log de Spark |
+| `execution_profile.md` | jobs, stages, tareas y bytes de shuffle por etapa, de la corrida de evidencia |
 | `delivery_2_checklist.md` | checklist §9.2 y criterios §6.4, en `evidence/` |
 
 En los archivos copiados de los logs, la ruta local del repo aparece como `<repo>`, y el token, el

@@ -76,4 +76,4 @@ personales.
 | Acceso a Cassandra | contenedor local sin autenticación, solo en `127.0.0.1` | `PasswordAuthenticator`, un rol de carga con `MODIFY` y uno de lectura con `SELECT` sobre el keyspace |
 | Retención | definida por zona, no automatizada | un job que borre particiones de Bronze y Quarantine vencidas por fecha de partición |
 | Monitoreo | resumen JSON por corrida, warnings de O3, compuertas que cortan la corrida | alertas sobre el resumen y un tablero de tamaño de Quarantine |
-| Catálogo | diccionario generado desde los Parquet (`data_dictionary.md`) | descripciones de negocio por columna, versionado de esquemas |
+| Catálogo | diccionario de las tablas del lake (`data_dictionary.md`) | descripciones de negocio por columna, versionado de esquemas |

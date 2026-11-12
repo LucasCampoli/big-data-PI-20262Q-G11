@@ -14,18 +14,6 @@ def read(spark: SparkSession, path: Path) -> DataFrame:
     return spark.read.parquet(str(path))
 
 
-def table_stats(path: Path) -> dict:
-    """Files, bytes and partition directories of one table, from the file system."""
-    files = [p for p in path.rglob("*.parquet")
-             if not any(part.startswith(("_", ".")) for part in p.relative_to(path).parts)]
-    partitions = {p.parent for p in files if p.parent != path}
-    return {
-        "files": len(files),
-        "bytes": sum(p.stat().st_size for p in files),
-        "partitions": len(partitions),
-    }
-
-
 def tables(datalake: Path) -> list[tuple[str, str, Path]]:
     out = []
     for zone in ZONES:

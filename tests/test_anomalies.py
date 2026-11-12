@@ -49,19 +49,3 @@ def test_window_only_looks_back(spark):
     # Day 15 must score the same whether or not day 20 exists.
     alone = by_day(score(series(spark, costs), window_days=28, min_history=14, threshold=3.5))
     assert days[15].anomaly_score == alone[15].anomaly_score
-
-
-def test_detection_check_splits_extreme_days_by_verdict(spark):
-    from pipeline.anomalies import detection_check
-    normal = [10.0, 11.0, 9.0, 10.5, 9.5] * 4
-    # Enough ordinary days that the p99 sits below the spike.
-    df = series(spark, normal + [500.0])
-    for i in range(3, 9):
-        df = df.unionByName(series(spark, normal, org=f"o{i}"))
-    early_negative = [-2.0] + [10.0] * 3          # too little history to be scored
-    df = df.unionByName(series(spark, early_negative, org="o2"))
-    mart = score(df, window_days=28, min_history=14, threshold=3.5)
-    check = detection_check(mart)
-    assert check["above_p99"]["days"] == 1 and check["above_p99"]["flagged"] == 1
-    assert check["negative"] == {**check["negative"], "days": 1, "flagged": 0, "not_flagged_unscored": 1}
-    assert check["negative"]["not_flagged_examples"][0]["org_id"] == "o2"

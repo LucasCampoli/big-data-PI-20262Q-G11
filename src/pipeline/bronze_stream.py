@@ -18,7 +18,6 @@ import json
 import logging
 
 from pyspark.sql import functions as F
-from pyspark.sql.streaming import StreamingQueryListener
 
 from . import quarantine
 from .errors import PipelineError
@@ -30,29 +29,6 @@ BRONZE_QUERY = "bronze_usage_events"
 QUARANTINE_QUERY = "quarantine_usage_events_parse"
 SOURCE_COLUMNS = [f.name for f in USAGE_EVENT_SCHEMA.fields]
 EVENT_FILES = "*.jsonl"
-
-
-class ProgressLogger(StreamingQueryListener):
-    """Logs each micro-batch as it completes: input rows, duration, rows held in the dedupe state
-    and rows dropped by the watermark, the empirical side of D8."""
-
-    def onQueryStarted(self, event):
-        log.info("query %s started (id %s)", event.name, event.id)
-
-    def onQueryProgress(self, event):
-        p = json.loads(event.progress.json)
-        state = p.get("stateOperators") or [{}]
-        log.info("query %s batch %s: %s input rows in %s ms, state rows %s, dropped by watermark %s",
-                 p.get("name"), p.get("batchId"), p.get("numInputRows"),
-                 (p.get("durationMs") or {}).get("triggerExecution"),
-                 state[0].get("numRowsTotal", "-"), state[0].get("numRowsDroppedByWatermark", "-"))
-
-    def onQueryIdle(self, event):
-        pass
-
-    def onQueryTerminated(self, event):
-        if event.exception:
-            log.error("query %s terminated with %s", event.id, event.exception)
 
 
 def read_events(spark, cfg):
@@ -152,30 +128,23 @@ def summarize(progress: list) -> dict:
 
 
 def progress_of(query) -> list:
-    # recentProgress is complete once the query has stopped; the listener can still be delivering
-    # the last events at that point, so it only drives the live log lines.
     return [json.loads(p.json) if hasattr(p, "json") else dict(p) for p in query.recentProgress]
 
 
 def run(ctx, metrics):
     cfg = ctx.cfg
-    recorder = ProgressLogger()
-    ctx.spark.streams.addListener(recorder)
+    queries = start_queries(ctx)
+    if cfg.stream_trigger == "processing_time":
+        log.info("continuous mode, trigger %s: Ctrl+C stops the queries", cfg.stream_processing_time)
     try:
-        queries = start_queries(ctx)
-        if cfg.stream_trigger == "processing_time":
-            log.info("continuous mode, trigger %s: Ctrl+C stops the queries", cfg.stream_processing_time)
-        try:
-            for q in queries:
-                q.awaitTermination()
-        except Exception as exc:
-            for q in queries:
-                if q.isActive:
-                    q.stop()
-            failed = [q.name for q in queries if q.exception()]
-            raise PipelineError(f"streaming query {failed or ''} failed: {str(exc).splitlines()[0]}") from exc
-    finally:
-        ctx.spark.streams.removeListener(recorder)
+        for q in queries:
+            q.awaitTermination()
+    except Exception as exc:
+        for q in queries:
+            if q.isActive:
+                q.stop()
+        failed = [q.name for q in queries if q.exception()]
+        raise PipelineError(f"streaming query {failed or ''} failed: {str(exc).splitlines()[0]}") from exc
 
     progress = [p for q in queries for p in progress_of(q)]
     cfg.logs.mkdir(parents=True, exist_ok=True)

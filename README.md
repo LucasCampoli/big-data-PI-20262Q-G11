@@ -89,7 +89,7 @@ Las etapas también se corren por separado, en este orden: `make bronze`, `make 
 ```bash
 make test           # pruebas con Spark local, no necesitan Cassandra
 make fixtures       # el pipeline sobre tests/fixtures/landing, con un lake aparte: ejercita cada regla de Quarantine
-make rerun-evidence # desde cero: el pipeline dos veces seguidas, conteos y todos los reportes de evidence/entrega-2
+make rerun-evidence # desde cero: el pipeline dos veces seguidas y un conteo de filas después de cada una
 ```
 
 `make rerun-evidence` borra el lake y el keyspace de Cassandra antes de empezar.
@@ -172,15 +172,9 @@ data/            muestra commiteada en data/sample/; los archivos crudos van en 
 docs/            entregas, diseño, gobierno, ficha de ejecución, diagramas y la consigna
 evidence/        perfiles de Landing (entrega 1) y evidencia de corrida (entrega-2/)
 notebooks/       exploración de Landing con PySpark (entrega 1)
-scripts/         armado del HTML imprimible, la muestra de datos y la corrida del notebook
+scripts/         la muestra de datos y la corrida del notebook
 datalake/, logs/ salidas de las corridas, fuera de git
 ```
-
-## Documento imprimible
-
-`python scripts/build_entrega_html.py . 2` arma `docs/entrega-2.html` con el documento, la matriz
-de gobierno, la ficha, el índice de decisiones y el diagrama embebido (con `1`, el de la entrega 1).
-Se imprime desde el navegador en A4, con fondos activados y sin encabezado ni pie.
 
 ## Notebook de exploración
 

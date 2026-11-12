@@ -14,7 +14,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from . import lake
-from .errors import PipelineError, QualityGateError
+from .errors import PipelineError
 
 log = logging.getLogger("pipeline.gold")
 
@@ -100,7 +100,7 @@ def run(ctx, metrics):
     metrics["org_daily_usage_by_service"] = report
     log.info("gold reconciliation %s", report)
     if not report["passed"]:
-        raise QualityGateError(f"org_daily_usage_by_service not published: {'; '.join(report['failures'])}")
+        raise PipelineError(f"org_daily_usage_by_service not published: {'; '.join(report['failures'])}")
 
     lake.write_partitioned(daily, cfg.table("gold", "org_daily_usage_by_service"), "usage_date",
                            cfg.files_per_partition)

@@ -368,8 +368,8 @@ la produjeron. Un cluster, en cambio, dice a qué grupo se parece un día, no po
 organización. Dejamos un pipeline de Spark ML como deseable para el final: KMeans para segmentar
 organizaciones por perfil de uso, que es una pregunta de Producto y no de anomalías.
 
-Chequeo de detección. Sin etiquetas, la referencia son los días que un umbral fijo llamaría
-extremos (`detection_check` en `evidence/entrega-2/cost_anomaly_summary.json`):
+Comparación con un umbral fijo. Sin etiquetas, miramos los días que un corte fijo llamaría
+extremos:
 
 | Días | Total | Marcados | Puntuados sin marcar | Sin historia |
 | :--- | ---: | ---: | ---: | ---: |
@@ -389,8 +389,8 @@ queda marcado.
 Consecuencias. El 36,3% de las filas, los primeros días de cada serie, queda sin puntuar, y eso
 explica 30 de los 110 días caros y 16 de los 35 negativos que no se marcan. Un día sin uso no tiene
 fila en Gold, así que la historia son los días con uso y no se rellena con ceros: el score responde
-si el día es raro comparado con los días en que el servicio se usó. Sin etiquetas, la calidad del
-método se mide con el chequeo de detección y los ejemplos, no con precision ni recall.
+si el día es raro comparado con los días en que el servicio se usó. Sin etiquetas, esa comparación
+es la lectura del método, no un precision ni un recall.
 
 ## D13. Carga batch: registro de ingestados, y el dedupe por clave va en Silver
 
@@ -500,8 +500,8 @@ Decisión. Mantenemos PySpark 4.2.0 y cargamos con el driver desde `foreachParti
 abre una sesión, prepara un `INSERT` y escribe sus filas con `execute_concurrent_with_args`. Antes
 se reparticiona por `org_id`, así cada tarea escribe particiones de Cassandra completas. Un
 `INSERT` es un upsert por primary key, así que recargar el mismo mart deja las mismas filas. Al
-terminar, la carga compara organización por organización cantidad de filas y costo contra Gold, y
-si no coinciden la corrida falla.
+terminar, la carga compara la cantidad de filas escritas con las de Gold, y si no coinciden la
+corrida falla.
 
 El destino principal es Cassandra 5.0 en Docker (`infra/docker-compose.yml`). AstraDB es el segundo
 destino, probado con el mismo código: `SERVING_TARGET=astra` cambia solo la conexión (bundle por
@@ -515,7 +515,7 @@ del contenedor local, desde los mismos archivos `cql/q*.cql`. Contra Cassandra l
 `LOCAL_QUORUM` se resuelve ahí.
 
 Entorno (§2.2 de la consigna). Corremos el mismo PySpark 4.2.0 fijado en `requirements.txt`, en modo
-`local[4]` sobre WSL2 con JDK 21. Lo validamos con `make check`, las 44 pruebas de `make test` y dos
+`local[4]` sobre WSL2 con JDK 21. Lo validamos con `make check`, las 39 pruebas de `make test` y dos
 corridas completas desde un clon limpio, con los mismos conteos. Cassandra corre en Docker y AstraDB
 se probó con el mismo código. No lo corrimos en Google Colab.
 

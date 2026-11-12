@@ -20,10 +20,19 @@ TOP_N = 3
 
 
 def table(rows, columns) -> str:
-    cells = [[("" if r[c] is None else (f"{r[c]:.4f}" if isinstance(r[c], float) else str(r[c]))) for c in columns] for r in rows]
-    widths = [max([len(c)] + [len(row[i]) for row in cells]) for i, c in enumerate(columns)]
-    line = lambda vals: " | ".join(v.ljust(w) for v, w in zip(vals, widths))
-    return "\n".join([line(columns), "-+-".join("-" * w for w in widths)] + [line(r) for r in cells])
+    lines = [" | ".join(columns)]
+    for row in rows:
+        cells = []
+        for column in columns:
+            value = row[column]
+            if value is None:
+                cells.append("")
+            elif isinstance(value, float):
+                cells.append(f"{value:.4f}")
+            else:
+                cells.append(str(value))
+        lines.append(" | ".join(cells))
+    return "\n".join(lines)
 
 
 def run_file(session, name: str, keyspace: str):

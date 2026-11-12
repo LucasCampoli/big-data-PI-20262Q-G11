@@ -59,7 +59,7 @@ cassandra-up:     ## start the local Cassandra and wait until it answers CQL
 cassandra-down:   ## stop it (the data volume is kept; add -v by hand to drop it)
 	$(COMPOSE) down
 
-serve:            ## create keyspace and tables if missing, upsert the Gold marts, verify per org
+serve:            ## create keyspace and tables if missing, upsert the Gold marts, check the row count
 	$(RUN) serving
 
 queries:          ## Q1, Q2 and Q6 through the driver and through cqlsh, saved to evidence/entrega-2
@@ -75,14 +75,13 @@ cqlsh:            ## interactive cqlsh in the container
 reset-serving:    ## drop the Cassandra keyspace; the next make serve recreates it empty
 	$(CQLSH) -e "DROP KEYSPACE IF EXISTS cloud_analytics;"
 
-evidence:         ## regenerate the reports in evidence/entrega-2 from the lake, the logs and Cassandra
-	$(PY) -m pipeline.evidence report
+evidence:         ## row counts of the lake and of Cassandra, in evidence/entrega-2/counts_latest.json
+	$(PY) -m pipeline.evidence latest
 
-rerun-evidence:   ## from scratch: the full pipeline twice in a row, counts after each, every report
+rerun-evidence:   ## from scratch: the full pipeline twice, with a row count after each run
 	$(MAKE) reset reset-serving
 	$(MAKE) run
-	$(PY) -m pipeline.evidence snapshot run_1
+	$(PY) -m pipeline.evidence run_1
 	$(MAKE) run
-	$(PY) -m pipeline.evidence snapshot run_2
+	$(PY) -m pipeline.evidence run_2
 	$(MAKE) stream-state-demo fixtures queries
-	$(PY) -m pipeline.evidence report

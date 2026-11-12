@@ -45,8 +45,6 @@ def build_session(cfg: Config, app_name: str) -> SparkSession:
     # Python workers default to the python3 on PATH; pinning them to the driver's interpreter keeps
     # the venv's packages (the Cassandra driver among them) even when the venv is not activated.
     os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
-    events_dir = cfg.logs / "spark-events"
-    events_dir.mkdir(parents=True, exist_ok=True)
     spark = (
         SparkSession.builder.appName(app_name)
         .master(cfg.spark_master)
@@ -60,13 +58,7 @@ def build_session(cfg: Config, app_name: str) -> SparkSession:
         .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
         .config("spark.sql.parquet.compression.codec", "snappy")
         .config("spark.sql.warehouse.dir", str(cfg.datalake / "_warehouse"))
-        # Event logs feed the execution sheet: jobs, stages, tasks and shuffle bytes per run.
-        .config("spark.eventLog.enabled", "true")
-        .config("spark.eventLog.dir", events_dir.as_uri())
-        .config("spark.eventLog.compress", "false")
-        .config("spark.eventLog.rolling.enabled", "false")
         .config("spark.ui.showConsoleProgress", "false")
-        .config("spark.sql.streaming.numRecentProgressUpdates", "1000")
         # WSL resolves the hostname to a loopback alias; local mode only needs localhost.
         .config("spark.driver.host", "127.0.0.1")
         .config("spark.driver.bindAddress", "127.0.0.1")
