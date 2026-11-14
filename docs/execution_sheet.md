@@ -1,8 +1,7 @@
 # Ficha de ejecución
 
 Cómo corre el pipeline hoy, medido en la corrida de la evidencia, y cómo se traduciría a containers
-de YARN a la escala proyectada del apéndice A del diseño. El detalle de esa corrida está en
-`evidence/entrega-2/execution_profile.md`.
+de YARN a la escala proyectada del apéndice A del diseño.
 
 ## Hoy: un proceso local
 
@@ -34,7 +33,7 @@ saltea los 7 CSV registrados. Silver, Gold y la carga se rehacen enteros en las 
 
 El shuffle más grande es el de Silver: el dedupe por `event_id` es una ventana particionada por
 `event_id` y mueve todos los eventos. La agregación de Gold mueve menos porque agrega parcial antes
-del exchange, que es el combiner del §7 del diseño (`gold_explain.txt`, nodos 2 a 4).
+del exchange, que es el combiner del §7 del diseño (nodos 2 a 4 del plan en `docs/entrega-2.md` §3.3).
 
 ## A escala: cómo quedaría en YARN
 

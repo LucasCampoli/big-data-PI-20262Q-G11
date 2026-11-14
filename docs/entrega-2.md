@@ -9,7 +9,7 @@ El pipeline corre de punta a punta sobre los datos provistos: Landing, Bronze, S
 Cassandra, con batch y streaming, reglas de calidad con Quarantine, un mart FinOps, un componente de
 anomalías y evidencia de idempotencia. Este documento resume lo implementado y remite a la
 evidencia. Los pasos exactos para correrlo están en el `README.md`, las decisiones en
-`DECISIONS.md` y los reportes generados en `evidence/entrega-2/`.
+`DECISIONS.md` y la evidencia de corrida en `evidence/entrega-2/`.
 
 ## 1. Qué cambió desde la entrega 1
 
@@ -141,7 +141,7 @@ cantidad de filas no es la del grano, la corrida falla y no publica.
 | organización-días comparados | 4.580 |
 | diferencia máxima | 0,00 USD |
 
-El plan físico (`gold_explain.txt`) es el job de MapReduce del §7:
+El plan físico de esa agregación es el job de MapReduce del §7:
 
 | Nodo del plan | Etapa de MapReduce |
 | :--- | :--- |
@@ -163,7 +163,7 @@ clave y tarea, no un evento.
 | `gold/org_daily_usage_by_service` | `usage_date` | 60 | 60 | 10 KB |
 | `gold/cost_anomaly_mart` | `usage_date` | 60 | 60 | 10 KB |
 
-El inventario completo, con filas y bytes por tabla, está en `lake_inventory.md`.
+Las filas de cada tabla de esa corrida están en `counts_run_1.json`.
 
 ## 4. Calidad y Quarantine
 
@@ -230,7 +230,7 @@ WHERE org_id = 'org_okep7y6w'
 ```
 
 Q2 es la misma lectura con `usage_date` del 18 al 31 de agosto: 54 filas de la partición que el
-cliente suma y ordena (`serving_q2_driver.txt`):
+cliente suma y ordena (`serving_q2_cqlsh.txt`):
 
 ```text
 rank | service  | cost_14d_usd | days_with_usage
@@ -240,8 +240,8 @@ rank | service  | cost_14d_usd | days_with_usage
 3    | database | 90.8801      | 9
 ```
 
-El `null` de `requests` es un día sin requests medidos, no un cero (D6). Las salidas completas, por
-cqlsh y por el driver, están en `serving_q1_*`, `serving_q2_*` y `serving_q6_*`.
+El `null` de `requests` es un día sin requests medidos, no un cero (D6). Las salidas completas por
+cqlsh están en `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt` y `serving_q6_cqlsh.txt`.
 
 AstraDB se probó con la misma carga, cambiando solo la conexión: `SERVING_TARGET=astra`, el secure
 connect bundle por ruta, el usuario `token` y el token como contraseña, todo por variables de entorno
@@ -253,9 +253,9 @@ y fuera del repo. El keyspace `cpa` se creó desde la consola, porque AstraDB no
 | `cpa.org_daily_usage_by_service` | 11.050 | 11.050 | 11.050 |
 | `cpa.cost_anomalies_by_org` | 11.050 | 11.050 | 11.050 |
 
-Q1, Q2 y Q6 devuelven sobre AstraDB los mismos resultados que en local (`serving_astra.md`,
-`serving_q*_driver_astra.txt`). En la evidencia copiada, el token, el host de la base y las rutas
-locales quedan enmascarados.
+Q1, Q2 y Q6 devuelven sobre AstraDB los mismos resultados que en local
+(`serving_q*_driver_astra.txt`, `astra_load_1.log`). En la evidencia copiada, el token, el host de
+la base y las rutas locales quedan enmascarados.
 
 ## 6. Analítica: anomalías de costo
 
@@ -301,8 +301,7 @@ que segmente organizaciones por perfil de uso (D12).
 ## 7. Idempotencia
 
 `make rerun-evidence` resetea el lake y el keyspace, corre el pipeline completo dos veces seguidas y
-guarda los conteos en `counts_run_1.json` y `counts_run_2.json`. La comparación de esa corrida está
-en `idempotency.md`.
+guarda los conteos en `counts_run_1.json` y `counts_run_2.json`. Las dos tienen las mismas filas.
 
 | Mecanismo | Qué protege | Resultado de la segunda corrida |
 | :--- | :--- | :--- |
@@ -339,16 +338,16 @@ La matriz de gobierno está en `docs/governance.md` y la ficha de ejecución en
 | Componente de §6.2 | Dónde está | Evidencia |
 | :--- | :--- | :--- |
 | Correcciones y arquitectura | §1 y §2, `docs/architecture_v2.svg` | sin correcciones de la cátedra; diagrama v2 |
-| Batch a Bronze, 3 maestros o más | `src/pipeline/bronze_batch.py` | los 7 CSV en `lake_inventory.md`, `run_1_*.log` |
-| Streaming a Bronze | `src/pipeline/bronze_stream.py` | `stream_bronze.md`, `run_1_stream_progress.jsonl`, `stream_state_demo_progress.jsonl` |
-| Silver, eventos y un maestro, joins, 3 features | `src/pipeline/silver.py` | `silver_quality.md`, `data_dictionary.md` |
-| Calidad, 3 reglas y Quarantine con muestras | `src/pipeline/quality_rules.py`, `tests/fixtures/landing/` | `silver_quality.md`, `quarantine_samples.md` |
-| Gold `org_daily_usage_by_service` | `src/pipeline/gold.py` | `gold_marts.md`, `gold_reconciliation.json`, `gold_explain.txt` |
-| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_*.txt`, `serving_q2_*.txt`, `serving_astra.md` |
-| Analítica | `src/pipeline/anomalies.py` | `gold_marts.md`, `cost_anomaly_summary.json`, `serving_q6_*.txt` |
-| Idempotencia | `make rerun-evidence` | `idempotency.md`, `counts_run_*.json` |
-| Gobierno preliminar | `docs/governance.md`, D17 | `data_dictionary.md`, logs con secretos enmascarados |
-| Pruebas y reproducibilidad | `tests/`, `Makefile`, `README.md` | `make test`, `run_*.json` |
+| Batch a Bronze, 3 maestros o más | `src/pipeline/bronze_batch.py` | los 7 CSV en `run_1_*.log` y `counts_run_1.json` |
+| Streaming a Bronze | `src/pipeline/bronze_stream.py` | `stream_bronze.md`, `run_1_stream_progress.jsonl` |
+| Silver, eventos y un maestro, joins, 3 features | `src/pipeline/silver.py` | `counts_run_1.json`, columnas en `src/pipeline/schemas.py` |
+| Calidad, 3 reglas y Quarantine con muestras | `src/pipeline/quality_rules.py`, `tests/fixtures/landing/` | `quarantine_samples.md` |
+| Gold `org_daily_usage_by_service` | `src/pipeline/gold.py` | §3.3, `counts_run_1.json` |
+| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt`, `serving_q*_driver_astra.txt` |
+| Analítica | `src/pipeline/anomalies.py` | §6, `serving_q6_cqlsh.txt` |
+| Idempotencia | `make rerun-evidence` | `counts_run_1.json`, `counts_run_2.json` |
+| Gobierno preliminar | `docs/governance.md`, D17 | `src/pipeline/schemas.py`, logs con secretos enmascarados |
+| Pruebas y reproducibilidad | `tests/`, `Makefile`, `README.md` | `make test`, `run_*.log` |
 | Backlog final | §11 | este documento |
 
 El checklist §9.2 y los criterios §6.4, línea por línea, están en

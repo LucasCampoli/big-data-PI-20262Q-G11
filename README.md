@@ -121,7 +121,7 @@ STREAM_TRIGGER=processing_time make stream    # Ctrl+C lo detiene; el checkpoint
 ### AstraDB
 
 El mismo código carga y consulta AstraDB cambiando solo la conexión. Lo probamos con el keyspace
-`cpa` (evidencia en `evidence/entrega-2/serving_astra.md`):
+`cpa` (evidencia en `evidence/entrega-2/astra_load_1.log` y `serving_q*_driver_astra.txt`):
 
 1. Crear una cuenta en astra.datastax.com y una base Serverless en el free tier.
 2. Desde la consola de la base, en Keyspaces, crear el keyspace del proyecto. AstraDB no acepta

@@ -32,10 +32,10 @@ lo que queda para el MVP final. Los dueños son los roles de `docs/design.md` §
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | Landing | ninguna, se observa (design §5) | archivos y filas por fuente | nombre de archivo | `make check` falla si falta una fuente | `landing_profile.md` |
 | Bronze | parsea con el esquema declarado, encabezado CSV igual al esquema | filas, filas a Quarantine, claves repetidas, progreso por micro-batch | `source_file`, `ingest_ts`, `ingest_date`, sha256 en el registro | resumen de corrida, `numRowsDroppedByWatermark` | `stream_bronze.md`, `run_*_stream_progress.jsonl` |
-| Silver | D6 y D7: 8 reglas de rechazo de eventos, 1 de tickets, 8 flags de reparación | O3 en filas y en costo, `unit` con `value` al 100% | lo de Bronze, más `processed_ts` y `run_id` | warning si Quarantine supera el 1% (O3) | `silver_quality.md` |
-| Gold | claves no nulas, filas igual al grano, costo a 0,01 USD de Silver por organización y día | resultado de la conciliación | `run_id`, `computed_ts`, `events` por fila | la corrida falla si no concilia y no publica | `gold_marts.md`, `gold_reconciliation.json` |
+| Silver | D6 y D7: 8 reglas de rechazo de eventos, 1 de tickets, 8 flags de reparación | O3 en filas y en costo, `unit` con `value` al 100% | lo de Bronze, más `processed_ts` y `run_id` | warning si Quarantine supera el 1% (O3) | `docs/entrega-2.md` §4, `quarantine_samples.md` |
+| Gold | claves no nulas, filas igual al grano, costo a 0,01 USD de Silver por organización y día | resultado de la conciliación | `run_id`, `computed_ts`, `events` por fila | la corrida falla si no concilia y no publica | `docs/entrega-2.md` §3.3, `counts_run_1.json` |
 | Quarantine | es el control | filas por regla y por tabla | `raw_record`, `source_file`, `rule_name`, `run_id` | tamaño contra O3 | `quarantine_samples.md` |
-| Cassandra | filas y costo por organización iguales a Gold | filas por tabla | `run_id`, `computed_ts` | la carga falla si no coincide | `serving_q*.txt`, `idempotency.md` |
+| Cassandra | filas y costo por organización iguales a Gold | filas por tabla | `run_id`, `computed_ts` | la carga falla si no coincide | `serving_q*_cqlsh.txt`, `counts_run_*.json` |
 
 ## Linaje de punta a punta
 
@@ -76,4 +76,4 @@ personales.
 | Acceso a Cassandra | contenedor local sin autenticación, solo en `127.0.0.1` | `PasswordAuthenticator`, un rol de carga con `MODIFY` y uno de lectura con `SELECT` sobre el keyspace |
 | Retención | definida por zona, no automatizada | un job que borre particiones de Bronze y Quarantine vencidas por fecha de partición |
 | Monitoreo | resumen JSON por corrida, warnings de O3, compuertas que cortan la corrida | alertas sobre el resumen y un tablero de tamaño de Quarantine |
-| Catálogo | diccionario de las tablas del lake (`data_dictionary.md`) | descripciones de negocio por columna, versionado de esquemas |
+| Catálogo | esquema de cada tabla en `src/pipeline/schemas.py` y `cql/01_tables.cql` | descripciones de negocio por columna, versionado de esquemas |
