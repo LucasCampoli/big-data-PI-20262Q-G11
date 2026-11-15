@@ -1,7 +1,6 @@
 # Ficha de ejecución
 
-Cómo corre el pipeline hoy, medido en la corrida de la evidencia, y cómo se traduciría a containers
-de YARN a la escala proyectada del apéndice A del diseño.
+Cómo corre el pipeline hoy, medido en la corrida de la evidencia.
 
 ## Hoy: un proceso local
 
@@ -34,29 +33,3 @@ saltea los 7 CSV registrados. Silver, Gold y la carga se rehacen enteros en las 
 El shuffle más grande es el de Silver: el dedupe por `event_id` es una ventana particionada por
 `event_id` y mueve todos los eventos. La agregación de Gold mueve menos porque agrega parcial antes
 del exchange, que es el combiner del §7 del diseño (nodos 2 a 4 del plan en `docs/entrega-2.md` §3.3).
-
-## A escala: cómo quedaría en YARN
-
-Supuestos del apéndice A: unos 43.200 millones de eventos por día, 500.000 por segundo, 13 TB de JSON
-y 1,6 TB de Parquet por día.
-
-| Job | Cola | Executors | Container por executor | Paralelismo |
-| :--- | :--- | :--- | :--- | :--- |
-| Streaming a Bronze | `streaming`, 30% de capacidad mínima, aplicación de larga duración | 10 executors × 4 cores, sin dynamic allocation | 8 GB + 10% de overhead, redondeado a 9 GB y 4 vcores | unos 150 MB/s de JSON, 9 GB por micro-batch de un minuto |
-| Silver diario | `batch`, 70%, elástica hasta 100% de noche | dynamic allocation hasta 100 × 5 cores | 16 GB + overhead, 18 GB y 5 vcores | 12.500 splits de 128 MB, unas 25 rondas de 500 tareas; `shuffle.partitions` cerca de 8.000 para unos 200 MB por partición en el dedupe |
-| Gold diario | `batch` | los del job de Silver | igual | 300.000 claves por día después del combiner; 200 particiones de shuffle alcanzan |
-| Carga a Cassandra | `batch` | 10 × 2 cores | 4 GB | 300.000 upserts por día, acotado por el cluster de Cassandra y no por Spark |
-
-En modo cluster, cada aplicación pide además un ApplicationMaster que hospeda al driver: unos 4 GB
-y 1 vcore. YARN asigna containers en múltiplos de `yarn.scheduler.minimum-allocation-mb`, por eso
-cada executor pide su memoria más el overhead redondeado hacia arriba. Con el Capacity Scheduler, la
-cola `streaming` tiene una capacidad mínima reservada para que el batch nocturno nunca le saque recursos al
-stream, y la cola `batch` puede usar lo que el stream no ocupa entre las 00:00 y las 06:00 UTC, que es
-la ventana de O1.
-
-El estado del dedupe es lo que más cambia con la escala. Hoy son 43.200 claves. A 500.000 eventos
-por segundo, una hora de watermark son unos 1.800 millones de `event_id`, del orden de 180 GB. Eso
-pide el state store de RocksDB (`spark.sql.streaming.stateStore.providerClass`), que guarda el estado
-en el disco local de cada executor, y un watermark más corto, de unos 10 minutos, que sigue
-cubriendo el horizonte de un reintento. La deduplicación exacta queda en Silver, donde no tiene
-costo de estado.

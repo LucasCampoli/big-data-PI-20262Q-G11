@@ -1,7 +1,7 @@
 # Cloud Provider Analytics, entrega 2
 
 Proyecto integrador de Big Data, ITBA, segundo cuatrimestre 2026.
-Segunda entrega: implementación técnica y MVP end-to-end mínimo. Versión 1, 2026-11-08.
+Segunda entrega: implementación técnica y MVP end-to-end mínimo. Versión 2, 2026-11-15.
 
 Grupo 11: Ivan Odzomek, Lucas Campoli, Matias Sapino, Diego Rabinovich, Diego Badin.
 
@@ -23,11 +23,8 @@ La entrega 1 no tuvo correcciones de la cátedra. Lo que cambió en el diseño v
 | Los maestros de Bronze particionan por `ingest_date` | cada snapshot queda en el día en que se cargó y la retención borra directorios enteros | D5 |
 | La carga a Cassandra usa el driver de Python desde `foreachPartition` | el conector oficial no tiene versión para Spark 4 | D16 |
 | Quarantine son cuatro tablas, una por escritor, con `rule_name` | el sink del stream es dueño de su carpeta y las reglas se reconstruyen | D15 |
-| Nueva regla de rechazo `resource_org_mismatch` | un recurso de otra organización es una contradicción entre claves | D6 |
-| El dedupe del stream usa un hash del contenido cuando falta `event_id` | los nulos se agrupan entre sí y colapsarían filas distintas | D14 |
 | Registro de ingestados con sha256, dedupe por clave en Silver | idempotencia de la carga batch | D13 |
 | `users.email` se reemplaza por un hash con sal en Silver | es el único dato personal | D17 |
-| D11 y D12 cerradas con los conteos de Gold | estaban abiertas a propósito | D11, D12 |
 | Spark local en WSL, Cassandra en Docker | el supuesto de §8.1 del diseño preveía este cambio | D16 |
 
 El §2.2 de la consigna pide un entorno equivalente a Colab. Corremos el mismo PySpark 4.2.0 fijado
@@ -54,7 +51,7 @@ configuración.
 | Streaming | `make stream` | `usage_events_stream/*.jsonl` | `bronze/usage_events`, `quarantine/usage_events_parse` |
 | Silver | `make silver` | Bronze | `silver/*`, `quarantine/*_rules` |
 | Gold | `make gold` | Silver | `gold/org_daily_usage_by_service`, `gold/cost_anomaly_mart` |
-| Serving | `make serve` y `make queries` | Gold | 2 tablas en Cassandra y en AstraDB, salidas de Q1, Q2 y Q6 |
+| Serving | `make serve` y `make queries` | Gold | 2 tablas en Cassandra y en AstraDB, salidas de las consultas |
 
 `make run` corre todas las etapas en orden. Cada corrida tiene un `run_id`, escribe
 `logs/<run_id>.log` y un resumen JSON con la configuración, el commit y las métricas de cada etapa, y
@@ -82,31 +79,12 @@ escribe un archivo por micro-batch. Sobre los datos reales:
 | filas descartadas por el watermark | 0 |
 | filas en el estado del dedupe al final | 43.200 (todas llegaron dentro de la hora) |
 | re-ejecución con el mismo checkpoint | 0 filas leídas |
-| experimento con watermark de 2 s | 0 descartadas; en la corrida de la evidencia, estado máximo de 15.840 claves y 28.800 liberadas |
 
-El experimento (`make stream-state-demo`, 4 archivos por micro-batch) es la prueba empírica de D8:
-el estado se libera a medida que avanza el watermark y Bronze sigue recibiendo todos los eventos.
-Como el watermark avanza con `ingest_ts`, el estado máximo depende del reloj y cambia entre
-corridas. Lo que no cambia es que no se descarta ningún evento.
-
-El stream no maneja late data. El watermark va sobre `ingest_ts`, que se sella al leer, así que
-ningún evento llega tarde contra él, y solo acota cuánto tiempo el dedupe recuerda un `event_id`.
-El late data se resuelve después: Bronze conserva todos los eventos y Silver ubica cada uno en la
-partición de su `event_date`. Para medir cuánto late data hay, `stream_bronze.md` vuelve a pasar
-Bronze por un watermark sobre `timestamp`, con un archivo por micro-batch y con los 12
-micro-batches reales de la corrida:
-
-| Watermark sobre `timestamp` | Tardíos con 1 archivo por micro-batch | Tardíos con 10 archivos (corrida real) |
-| :--- | ---: | ---: |
-| 1 día | 42.118 (97,5%) | 38.940 (90,1%) |
-| 7 días | 37.831 (87,6%) | 34.984 (81,0%) |
-
-Con 10 archivos el watermark avanza una vez cada 10 partes y los eventos de un mismo micro-batch no
-se comparan entre sí, por eso hay menos tardíos. Spark arma los micro-batches por fecha de
-modificación de los archivos, que depende de cómo se copió el dataset: en nuestra copia
-`events_part_0045` entró en el primero. Con bloques de 10 por nombre el resultado es 38.935, cinco
-eventos menos. Cada micro-batch se identifica en Bronze por su `ingest_ts`. El detalle quedó en
-`stream_bronze.md`.
+Late data: los archivos llegan desordenados en el tiempo del evento, así que un watermark sobre
+`timestamp` descartaría entre el 81% y el 97% de los eventos (`stream_bronze.md`). Por eso el
+watermark va sobre `ingest_ts`, que se sella al leer: ningún evento queda afuera y el watermark solo
+acota cuánto tiempo el dedupe recuerda un `event_id`. Los eventos tardíos se ubican después, en
+Silver, en la partición de su `event_date`, que se reconstruye en cada corrida (D8).
 
 ### 3.2 Silver
 
@@ -141,13 +119,14 @@ cantidad de filas no es la del grano, la corrida falla y no publica.
 | organización-días comparados | 4.580 |
 | diferencia máxima | 0,00 USD |
 
-El plan físico de esa agregación es el job de MapReduce del §7:
+El plan físico de esa agregación (`df.explain()`, en `gold_explain.txt`) es el job de MapReduce
+del §7 del diseño:
 
 | Nodo del plan | Etapa de MapReduce |
 | :--- | :--- |
 | `Scan parquet` que lee 11 de las 28 columnas de Silver (poda de columnas) | input splits y lectura del map |
 | `HashAggregate` con `partial_sum` y `partial_count` | combiner, suma local por tarea |
-| `Exchange hashpartitioning(org_id, event_date, service, 8)` | partitioner y shuffle sobre la clave compuesta. `event_date` es la columna de Silver; el alias `usage_date` se aplica recién en el `HashAggregate` final (`event_date AS usage_date`), así que es la misma fecha con el nombre del grano del mart |
+| `Exchange hashpartitioning(org_id, event_date, service, 8)` | partitioner y shuffle sobre la clave compuesta (`event_date` pasa a llamarse `usage_date` en el reduce) |
 | `HashAggregate` con `sum` y `count` | reduce |
 | `AdaptiveSparkPlan` | AQE ajusta las particiones del shuffle después de medirlas |
 
@@ -177,7 +156,7 @@ Las filas de cada tabla de esa corrida están en `counts_run_1.json`.
 | `cost_usd_increment` < -0,01 | Silver | `cost_anomaly_flag` | 211 | 1 |
 | `unit` nulo con `metric` conocido | Silver | imputar, `unit_imputed` | 2.075 | 1 |
 | ticket resuelto antes de creado | Silver | Quarantine | 0 | 1 |
-| CSAT, NPS, tasa USD, créditos, subtotal, timestamps de users, conversión sin clic | Silver | anular, reparar o marcar (D7) | 40, 1, 160, 137, 13, 232 y 249, 96 | 1 cada una |
+| valores fuera de rango en los maestros (CSAT, NPS, tasa USD, créditos y otros) | Silver | anular, reparar o marcar | cantidades por regla en D7 | 1 cada una |
 
 Las tres reglas de la consigna se cumplen en Silver: 0 `event_id` nulos y 0 duplicados, 211 costos
 negativos marcados, y los 42.323 eventos con `value` tienen `unit`, o sea el 100% después de la
@@ -203,10 +182,9 @@ mismo cargador.
 | :--- | :--- | :--- | :--- | :--- |
 | Q1, costo y requests diarios por servicio en un rango | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service` | un rango dentro de una partición |
 | Q2, top-N de servicios por costo en 14 días | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service` | 14 días de una partición (84 filas como máximo), suma y orden en el cliente |
-| Q6, días anómalos | `cost_anomalies_by_org` | `org_id` | `usage_date DESC`, `service` | un rango de una partición, filtro `is_anomaly` en el cliente |
 
-Replicación local: `NetworkTopologyStrategy` con `dc1: 1`. En producción sería `dc1: 3` con
-`LOCAL_QUORUM` para leer y escribir. Una partición tiene como máximo 6 filas por día, así que crece
+El mart de anomalías del §6 se carga además en `cost_anomalies_by_org`, con la misma clave.
+Una partición tiene como máximo 6 filas por día, así que crece
 a unas 2.190 filas por año sin importar el tamaño de la organización, y no hace falta un bucket por
 mes (D11). La carga compara la cantidad de filas escritas con las de Gold. Las 11.050 filas
 coinciden en las dos tablas.
@@ -229,8 +207,8 @@ WHERE org_id = 'org_okep7y6w'
 (25 rows)
 ```
 
-Q2 es la misma lectura con `usage_date` del 18 al 31 de agosto: 54 filas de la partición que el
-cliente suma y ordena (`serving_q2_cqlsh.txt`):
+Q2 es la misma lectura con `usage_date` del 18 al 31 de agosto: cqlsh devuelve las 54 filas de la
+partición (`serving_q2_cqlsh.txt`) y el cliente las suma y ordena (`serving_q2_driver_astra.txt`):
 
 ```text
 rank | service  | cost_14d_usd | days_with_usage
@@ -240,8 +218,7 @@ rank | service  | cost_14d_usd | days_with_usage
 3    | database | 90.8801      | 9
 ```
 
-El `null` de `requests` es un día sin requests medidos, no un cero (D6). Las salidas completas por
-cqlsh están en `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt` y `serving_q6_cqlsh.txt`.
+El `null` de `requests` es un día sin requests medidos, no un cero (D6).
 
 AstraDB se probó con la misma carga, cambiando solo la conexión: `SERVING_TARGET=astra`, el secure
 connect bundle por ruta, el usuario `token` y el token como contraseña, todo por variables de entorno
@@ -253,8 +230,8 @@ y fuera del repo. El keyspace `cpa` se creó desde la consola, porque AstraDB no
 | `cpa.org_daily_usage_by_service` | 11.050 | 11.050 | 11.050 |
 | `cpa.cost_anomalies_by_org` | 11.050 | 11.050 | 11.050 |
 
-Q1, Q2 y Q6 devuelven sobre AstraDB los mismos resultados que en local
-(`serving_q*_driver_astra.txt`, `astra_load_1.log`). En la evidencia copiada, el token, el host de
+Q1 y Q2 devuelven sobre AstraDB los mismos resultados que en local
+(`serving_q1_driver_astra.txt`, `serving_q2_driver_astra.txt`, `astra_load_1.log`). En la evidencia copiada, el token, el host de
 la base y las rutas locales quedan enmascarados.
 
 ## 6. Analítica: anomalías de costo
@@ -271,32 +248,12 @@ las alternativas están en D12.
 | organizaciones con al menos un día marcado | 69 de 80 |
 | caso más alto | `org_okep7y6w`, compute, 2025-08-07: 191,90 USD contra una mediana de 11,27 (score 106,5) |
 
-Comparamos el mart con los días que un umbral fijo llamaría extremos:
+El método es relativo a cada serie: un día caro para una organización que siempre gasta mucho no se
+marca. La limitación principal son los días con menos de 14 días de historia, que quedan sin puntuar.
 
-| Días | Total | Marcados | Puntuados sin marcar | Sin historia |
-| :--- | ---: | ---: | ---: | ---: |
-| costo diario por encima del p99 de Gold (63,91 USD) | 110 | 39 (35,5%) | 41 | 30 |
-| costo diario negativo | 35 | 4 (11,4%) | 15 | 16 |
-
-| Caso | Ejemplo | Por qué |
-| :--- | :--- | :--- |
-| caro y marcado | `org_g8sbi4q2`, database, 2025-08-05: 142,95 USD, mediana 9,22, score 28,9 | salto contra su propia serie |
-| caro sin marcar | `org_ktakpuxq`, compute, 2025-08-06: 108,76 USD, mediana 35,58, score 2,92 | la serie gasta mucho siempre |
-| negativo y marcado | `org_0lvsnujz`, analytics, 2025-08-24: -134,24 USD, mediana 15,61, score -10,6 | corrección fuera de escala |
-| negativo sin marcar | `org_dhylurtp`, compute, 2025-07-27: -9,00 USD, mediana 19,52, score -1,83 | dentro de la variación de la serie |
-
-Que un día caro no se marque es lo esperado de un método relativo: un monto alto para una
-organización grande no es raro. Los costos negativos chicos ya quedan cubiertos por el
-`cost_anomaly_flag` de cada evento y por `negative_cost_events` en el mart, y el score marca solo los
-que se salen de su serie. Los días sin historia son la limitación más concreta: explican 30 de los
-días caros y 16 de los negativos que no se marcan.
-
-No forzamos un modelo de Spark ML, porque la planificación pide no hacerlo cuando un método
-estadístico responde mejor, y acá responde mejor. La mediana y el MAD casi no se mueven con la cola
-larga medida en los incrementos (p99 de 16,69 contra un máximo de 317,43), y cada alerta se explica
-contra la historia de su propia serie. Un clustering diría a qué grupo se parece un día, no por qué
-es raro para esa organización. Para el final queda como deseable un pipeline de Spark ML con KMeans
-que segmente organizaciones por perfil de uso (D12).
+Elegimos un método estadístico y no un modelo de Spark ML porque la mediana y el MAD casi no se
+mueven con la cola larga de los costos y cada alerta se explica contra la historia de su propia
+serie. Un pipeline de Spark ML queda como deseable para el final (§11, D12).
 
 ## 7. Idempotencia
 
@@ -321,9 +278,7 @@ fixtures, Silver de punta a punta, la semántica de nulos de Gold y su conciliac
 de los CQL y la sal obligatoria del hash de emails.
 
 La configuración vive en `config/pipeline.env`, copiado de `config/pipeline.env.example`, y cada
-variable se puede pisar desde el entorno. El pipeline acepta Java 17, 21 o 25; la evidencia se
-generó con 21. Con 25 corrimos `make check` y 43 de las pruebas, todas en verde; la del
-`:Zone.Identifier` solo la corrimos con 21. Los errores esperables (otra
+variable se puede pisar desde el entorno. La evidencia se generó con Java 21. Los errores esperables (otra
 versión de Java, `PII_HASH_SALT` sin definir, Landing incompleto, encabezado CSV distinto del
 esquema, Gold que no concilia, Cassandra o AstraDB inaccesibles o sin credenciales) cortan la
 corrida con un mensaje en el log y código 1.
@@ -342,16 +297,13 @@ La matriz de gobierno está en `docs/governance.md` y la ficha de ejecución en
 | Streaming a Bronze | `src/pipeline/bronze_stream.py` | `stream_bronze.md`, `run_1_stream_progress.jsonl` |
 | Silver, eventos y un maestro, joins, 3 features | `src/pipeline/silver.py` | `counts_run_1.json`, columnas en `src/pipeline/schemas.py` |
 | Calidad, 3 reglas y Quarantine con muestras | `src/pipeline/quality_rules.py`, `tests/fixtures/landing/` | `quarantine_samples.md` |
-| Gold `org_daily_usage_by_service` | `src/pipeline/gold.py` | §3.3, `counts_run_1.json` |
-| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt`, `serving_q*_driver_astra.txt` |
-| Analítica | `src/pipeline/anomalies.py` | §6, `serving_q6_cqlsh.txt` |
+| Gold `org_daily_usage_by_service` | `src/pipeline/gold.py` | §3.3, `gold_explain.txt`, `counts_run_1.json` |
+| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt`, `serving_q1_driver_astra.txt`, `serving_q2_driver_astra.txt` |
+| Analítica | `src/pipeline/anomalies.py` | §6, `counts_run_1.json` |
 | Idempotencia | `make rerun-evidence` | `counts_run_1.json`, `counts_run_2.json` |
 | Gobierno preliminar | `docs/governance.md`, D17 | `src/pipeline/schemas.py`, logs con secretos enmascarados |
 | Pruebas y reproducibilidad | `tests/`, `Makefile`, `README.md` | `make test`, `run_*.log` |
 | Backlog final | §11 | este documento |
-
-El checklist §9.2 y los criterios §6.4, línea por línea, están en
-`evidence/delivery_2_checklist.md`.
 
 ## 11. Backlog para el MVP final
 

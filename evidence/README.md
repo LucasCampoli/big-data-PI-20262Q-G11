@@ -25,10 +25,10 @@ refresca `counts_run_1.json` y `counts_run_2.json`.
 | `run_1_<run_id>.log`, `run_2_<run_id>.log` | log de la primera corrida, sobre un lake vacío, y de la re-ejecución |
 | `counts_run_1.json`, `counts_run_2.json` | filas por tabla del lake y de Cassandra después de cada corrida |
 | `stream_bronze.md`, `run_1_stream_progress.jsonl` | micro-batches del stream y la medición de late data |
+| `gold_explain.txt` | plan físico de la agregación de Gold (`df.explain()`), copiado de `logs/<run_id>_gold_explain.txt` |
 | `quarantine_samples.md` | una muestra cruda de cada regla de Quarantine |
 | `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt`, `serving_q6_cqlsh.txt` | Q1, Q2 y Q6 por cqlsh contra Cassandra local |
 | `serving_q*_driver_astra.txt`, `astra_load_1.log` | las mismas consultas y la carga de Gold contra AstraDB |
-| `delivery_2_checklist.md` | checklist §9.2 y criterios §6.4, en `evidence/` |
 
 En los archivos copiados de los logs, la ruta local del repo aparece como `<repo>`, y el token, el
 host de AstraDB y la ruta del bundle quedan enmascarados.

@@ -35,7 +35,7 @@ lo que queda para el MVP final. Los dueños son los roles de `docs/design.md` §
 | Silver | D6 y D7: 8 reglas de rechazo de eventos, 1 de tickets, 8 flags de reparación | O3 en filas y en costo, `unit` con `value` al 100% | lo de Bronze, más `processed_ts` y `run_id` | warning si Quarantine supera el 1% (O3) | `docs/entrega-2.md` §4, `quarantine_samples.md` |
 | Gold | claves no nulas, filas igual al grano, costo a 0,01 USD de Silver por organización y día | resultado de la conciliación | `run_id`, `computed_ts`, `events` por fila | la corrida falla si no concilia y no publica | `docs/entrega-2.md` §3.3, `counts_run_1.json` |
 | Quarantine | es el control | filas por regla y por tabla | `raw_record`, `source_file`, `rule_name`, `run_id` | tamaño contra O3 | `quarantine_samples.md` |
-| Cassandra | filas y costo por organización iguales a Gold | filas por tabla | `run_id`, `computed_ts` | la carga falla si no coincide | `serving_q*_cqlsh.txt`, `counts_run_*.json` |
+| Cassandra | filas iguales a Gold | filas por tabla | `run_id`, `computed_ts` | la carga falla si no coincide | `serving_q*_cqlsh.txt`, `counts_run_*.json` |
 
 ## Linaje de punta a punta
 
