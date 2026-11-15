@@ -62,7 +62,9 @@ class Context:
         self.run_id = run_id
         self.spark = spark
         # One timestamp per run: every row a run writes carries the same ingest/processed time.
-        self.run_ts = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+        # Keep the UTC tzinfo: PySpark reads a naive datetime literal as local time, which would
+        # shift every technical timestamp, and ingest_date with it, by the machine's UTC offset.
+        self.run_ts = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 def open_log(cfg: Config, run_id: str):
