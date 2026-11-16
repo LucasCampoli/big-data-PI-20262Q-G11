@@ -51,7 +51,7 @@ configuración.
 | Streaming | `make stream` | `usage_events_stream/*.jsonl` | `bronze/usage_events`, `quarantine/usage_events_parse` |
 | Silver | `make silver` | Bronze | `silver/*`, `quarantine/*_rules` |
 | Gold | `make gold` | Silver | `gold/org_daily_usage_by_service`, `gold/cost_anomaly_mart` |
-| Serving | `make serve` y `make queries` | Gold | 2 tablas en Cassandra y en AstraDB, salidas de las consultas |
+| Serving | `make serve` y `make queries` | Gold | tabla en Cassandra y en AstraDB, salidas de las consultas |
 
 `make run` corre todas las etapas en orden. Cada corrida tiene un `run_id`, escribe
 `logs/<run_id>.log` y un resumen JSON con la configuración, el commit y las métricas de cada etapa, y
@@ -119,19 +119,7 @@ cantidad de filas no es la del grano, la corrida falla y no publica.
 | organización-días comparados | 4.580 |
 | diferencia máxima | 0,00 USD |
 
-El plan físico de esa agregación (`df.explain()`, en `gold_explain.txt`) es el job de MapReduce
-del §7 del diseño:
-
-| Nodo del plan | Etapa de MapReduce |
-| :--- | :--- |
-| `Scan parquet` que lee 11 de las 28 columnas de Silver (poda de columnas) | input splits y lectura del map |
-| `HashAggregate` con `partial_sum` y `partial_count` | combiner, suma local por tarea |
-| `Exchange hashpartitioning(org_id, event_date, service, 8)` | partitioner y shuffle sobre la clave compuesta (`event_date` pasa a llamarse `usage_date` en el reduce) |
-| `HashAggregate` con `sum` y `count` | reduce |
-| `AdaptiveSparkPlan` | AQE ajusta las particiones del shuffle después de medirlas |
-
-El hash cubre la clave completa, como en §7.3, y gracias al combiner el shuffle mueve una fila por
-clave y tarea, no un evento.
+El plan físico de esa agregación (`df.explain()`) está en `gold_explain.txt`.
 
 ### 3.4 Particiones y archivos
 
@@ -183,11 +171,10 @@ mismo cargador.
 | Q1, costo y requests diarios por servicio en un rango | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service` | un rango dentro de una partición |
 | Q2, top-N de servicios por costo en 14 días | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service` | 14 días de una partición (84 filas como máximo), suma y orden en el cliente |
 
-El mart de anomalías del §6 se carga además en `cost_anomalies_by_org`, con la misma clave.
 Una partición tiene como máximo 6 filas por día, así que crece
 a unas 2.190 filas por año sin importar el tamaño de la organización, y no hace falta un bucket por
 mes (D11). La carga compara la cantidad de filas escritas con las de Gold. Las 11.050 filas
-coinciden en las dos tablas.
+coinciden.
 
 Q1 para `org_okep7y6w` del 1 al 7 de agosto, como está en `cql/q1_daily_cost_by_service.cql` y
 como lo devuelve cqlsh (primeras filas de 25, `serving_q1_cqlsh.txt`):
@@ -228,7 +215,6 @@ y fuera del repo. El keyspace `cpa` se creó desde la consola, porque AstraDB no
 | Tabla en AstraDB | Primera carga | Segunda carga | Gold |
 | :--- | ---: | ---: | ---: |
 | `cpa.org_daily_usage_by_service` | 11.050 | 11.050 | 11.050 |
-| `cpa.cost_anomalies_by_org` | 11.050 | 11.050 | 11.050 |
 
 Q1 y Q2 devuelven sobre AstraDB los mismos resultados que en local
 (`serving_q1_driver_astra.txt`, `serving_q2_driver_astra.txt`, `astra_load_1.log`). En la evidencia copiada, el token, el host de
@@ -253,7 +239,7 @@ marca. La limitación principal son los días con menos de 14 días de historia,
 
 Elegimos un método estadístico y no un modelo de Spark ML porque la mediana y el MAD casi no se
 mueven con la cola larga de los costos y cada alerta se explica contra la historia de su propia
-serie. Un pipeline de Spark ML queda como deseable para el final (§11, D12).
+serie. Un pipeline de Spark ML queda como deseable para el final (§10, D12).
 
 ## 7. Idempotencia
 
@@ -266,7 +252,7 @@ guarda los conteos en `counts_run_1.json` y `counts_run_2.json`. Las dos tienen 
 | checkpoints de las dos queries | Landing a Bronze, streaming | 0 archivos nuevos, los mismos commits que en la primera: 13 en Bronze (12 con datos y uno vacío que avanza el watermark) y 12 en Quarantine |
 | reconstrucción y dynamic partition overwrite | Silver y Gold | mismas filas en las 18 tablas del lake |
 | Quarantine de reglas sobrescrita entera | Quarantine | sin copias del día anterior |
-| upsert por primary key | Cassandra | las mismas 11.050 filas en cada tabla |
+| upsert por primary key | Cassandra | las mismas 11.050 filas |
 
 ## 8. Pruebas, configuración y errores
 
@@ -285,27 +271,9 @@ corrida con un mensaje en el log y código 1.
 
 ## 9. Gobierno y ejecución
 
-La matriz de gobierno está en `docs/governance.md` y la ficha de ejecución en
-`docs/execution_sheet.md`. Los dos se incluyen al final de este documento.
+La matriz de gobierno está en `docs/governance.md` y se incluye al final de este documento.
 
-## 10. Requisito y evidencia
-
-| Componente de §6.2 | Dónde está | Evidencia |
-| :--- | :--- | :--- |
-| Correcciones y arquitectura | §1 y §2, `docs/architecture_v2.svg` | sin correcciones de la cátedra; diagrama v2 |
-| Batch a Bronze, 3 maestros o más | `src/pipeline/bronze_batch.py` | los 7 CSV en `run_1_*.log` y `counts_run_1.json` |
-| Streaming a Bronze | `src/pipeline/bronze_stream.py` | `stream_bronze.md`, `run_1_stream_progress.jsonl` |
-| Silver, eventos y un maestro, joins, 3 features | `src/pipeline/silver.py` | `counts_run_1.json`, columnas en `src/pipeline/schemas.py` |
-| Calidad, 3 reglas y Quarantine con muestras | `src/pipeline/quality_rules.py`, `tests/fixtures/landing/` | `quarantine_samples.md` |
-| Gold `org_daily_usage_by_service` | `src/pipeline/gold.py` | §3.3, `gold_explain.txt`, `counts_run_1.json` |
-| Serving, keyspace, tabla, carga y dos consultas | `cql/`, `src/pipeline/serving.py`, `src/pipeline/queries.py` | `serving_q1_cqlsh.txt`, `serving_q2_cqlsh.txt`, `serving_q1_driver_astra.txt`, `serving_q2_driver_astra.txt` |
-| Analítica | `src/pipeline/anomalies.py` | §6, `counts_run_1.json` |
-| Idempotencia | `make rerun-evidence` | `counts_run_1.json`, `counts_run_2.json` |
-| Gobierno preliminar | `docs/governance.md`, D17 | `src/pipeline/schemas.py`, logs con secretos enmascarados |
-| Pruebas y reproducibilidad | `tests/`, `Makefile`, `README.md` | `make test`, `run_*.log` |
-| Backlog final | §11 | este documento |
-
-## 11. Backlog para el MVP final
+## 10. Backlog para el MVP final
 
 | Prioridad | Trabajo |
 | :--- | :--- |
