@@ -80,7 +80,7 @@ class Config:
             landing=_path("DATA_LANDING", "data/landing"),
             datalake=_path("DATALAKE_ROOT", "datalake"),
             logs=_path("LOG_DIR", "logs"),
-            evidence=_path("EVIDENCE_DIR", "evidence/entrega-2"),
+            evidence=_path("EVIDENCE_DIR", "evidence/final"),
             java_home=_env("PIPELINE_JAVA_HOME") or _env("JAVA_HOME"),
             spark_master=_env("SPARK_MASTER", "local[4]"),
             driver_memory=_env("SPARK_DRIVER_MEMORY", "2g"),

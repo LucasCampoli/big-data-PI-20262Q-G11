@@ -52,7 +52,7 @@ COMPOSE := docker compose -f infra/docker-compose.yml
 # cqlsh logs in as a role; the credentials come from the same place the pipeline reads them.
 CONF = $$($(PY) -m pipeline.config get $(1))
 CQLSH_AS = $(COMPOSE) exec -T cassandra cqlsh --request-timeout=120 -u "$(call CONF,$(1)_USERNAME)" -p "$(call CONF,$(1)_PASSWORD)"
-EVIDENCE := evidence/entrega-2
+EVIDENCE := evidence/final
 
 cassandra-up:     ## start the local Cassandra and wait until it answers CQL
 	$(COMPOSE) up -d --wait
@@ -77,8 +77,8 @@ queries:          ## Q1 to Q6 through the driver and, on local Cassandra, throug
 cqlsh:            ## interactive cqlsh in the container, as the read-only role
 	$(COMPOSE) exec cassandra cqlsh -u "$(call CONF,CASSANDRA_READER_USERNAME)" -p "$(call CONF,CASSANDRA_READER_PASSWORD)"
 
-reset-serving:    ## drop the Cassandra keyspace; the next make serve recreates it empty
-	$(call CQLSH_AS,CASSANDRA_ADMIN) -e "DROP KEYSPACE IF EXISTS cloud_analytics;"
+reset-serving:    ## drop the local Cassandra keyspace; make cassandra-init creates it again, empty
+	$(PY) -m pipeline.cassandra_admin --drop
 
 health:           ## OK, WARN or ALERT for the last runs (exit 1 on ALERT), from the summaries in logs/
 	$(PY) -m pipeline.health
@@ -86,13 +86,17 @@ health:           ## OK, WARN or ALERT for the last runs (exit 1 on ALERT), from
 dictionary:       ## data dictionary of every lake table, read from the Parquet files, in docs/data_dictionary.md
 	$(PY) -m pipeline.dictionary
 
-evidence:         ## row counts of the lake and of Cassandra, in evidence/entrega-2/counts_latest.json
+evidence:         ## row counts of the lake and of Cassandra, in $(EVIDENCE)/counts_latest.json
 	$(PY) -m pipeline.evidence latest
 
-rerun-evidence:   ## from scratch: the full pipeline twice, with a row count after each run
-	$(MAKE) reset reset-serving
+rerun-evidence:   ## from scratch: the pipeline twice with counts and logs, fixtures, Q1-Q6, health and dictionary
+	$(MAKE) reset reset-serving cassandra-init
 	$(MAKE) run
 	$(PY) -m pipeline.evidence run_1
 	$(MAKE) run
 	$(PY) -m pipeline.evidence run_2
-	$(MAKE) stream-state-demo fixtures queries
+	$(MAKE) fixtures
+	DATALAKE_ROOT=datalake/_fixtures LOG_DIR=logs/fixtures SERVING_TARGET=none $(PY) -m pipeline.evidence fixtures
+	$(MAKE) queries
+	$(PY) -m pipeline.health --out $(EVIDENCE)/health_report.md
+	$(MAKE) dictionary

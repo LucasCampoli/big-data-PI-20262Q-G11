@@ -1,6 +1,7 @@
 """Local Cassandra setup as superuser: keyspace, tables, and the loader and reader roles (D19).
 
-python -m pipeline.cassandra_admin      (make cassandra-init)
+python -m pipeline.cassandra_admin               (make cassandra-init)
+python -m pipeline.cassandra_admin --drop        (make reset-serving: drops the keyspace)
 
 Run after make cassandra-up, and again after a change in cql/01_tables.cql. It is idempotent:
 roles are created if missing and their passwords set again from config, grants are repeated.
@@ -12,6 +13,7 @@ password and replaces it with CASSANDRA_ADMIN_PASSWORD; later runs log in with t
 | cpa_loader  | SELECT, MODIFY              | make serve: upserts and the row check     |
 | cpa_reader  | SELECT                      | make queries, cqlsh, the evidence counts  |
 """
+import argparse
 import logging
 import re
 import sys
@@ -54,7 +56,10 @@ def roles(cfg: Config) -> dict:
     return out
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--drop", action="store_true", help="drop the keyspace and its grants, nothing else")
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("cassandra").setLevel(logging.ERROR)
     cfg = Config.from_env()
@@ -71,6 +76,10 @@ def main() -> int:
         return 1
     ks = cfg.cassandra_keyspace
     try:
+        if args.drop:
+            session.execute(f"DROP KEYSPACE IF EXISTS {ks}")
+            log.info("keyspace %s dropped; make cassandra-init creates it again", ks)
+            return 0
         for name in ("00_keyspace.cql", "01_tables.cql"):
             for stmt in cql_statements(CQL_DIR / name, ks):
                 session.execute(stmt)
