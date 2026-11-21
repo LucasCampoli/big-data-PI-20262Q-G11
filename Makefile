@@ -52,7 +52,9 @@ COMPOSE := docker compose -f infra/docker-compose.yml
 # cqlsh logs in as a role; the credentials come from the same place the pipeline reads them.
 CONF = $$($(PY) -m pipeline.config get $(1))
 CQLSH_AS = $(COMPOSE) exec -T cassandra cqlsh --request-timeout=120 -u "$(call CONF,$(1)_USERNAME)" -p "$(call CONF,$(1)_PASSWORD)"
-EVIDENCE := evidence/final
+# One evidence directory for make and for the pipeline: `EVIDENCE=dir make ...` moves both.
+EVIDENCE ?= evidence/final
+export EVIDENCE_DIR = $(EVIDENCE)
 
 cassandra-up:     ## start the local Cassandra and wait until it answers CQL
 	$(COMPOSE) up -d --wait
