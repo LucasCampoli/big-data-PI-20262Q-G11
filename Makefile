@@ -83,6 +83,9 @@ reset-serving:    ## drop the Cassandra keyspace; the next make serve recreates 
 health:           ## OK, WARN or ALERT for the last runs (exit 1 on ALERT), from the summaries in logs/
 	$(PY) -m pipeline.health
 
+dictionary:       ## data dictionary of every lake table, read from the Parquet files, in docs/data_dictionary.md
+	$(PY) -m pipeline.dictionary
+
 evidence:         ## row counts of the lake and of Cassandra, in evidence/entrega-2/counts_latest.json
 	$(PY) -m pipeline.evidence latest
 
