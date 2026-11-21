@@ -2,4 +2,5 @@ pyspark==4.2.0
 pandas>=2.2,<3
 jupyter>=1.1
 pytest>=8.0
+markdown>=3.5
 cassandra-driver==3.30.1
