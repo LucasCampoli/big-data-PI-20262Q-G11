@@ -52,8 +52,11 @@ LOAD_PARTITIONS = 4
 CONCURRENCY = 32
 
 
-def connection_settings(cfg: Config) -> dict:
-    """Plain values only: this dict is shipped to the Spark tasks."""
+def connection_settings(cfg: Config, role: str = "loader") -> dict:
+    """Plain values only: this dict is shipped to the Spark tasks.
+
+    role picks the local Cassandra credentials (D19): loader writes the marts, reader runs the
+    queries, admin creates the schema and the roles. AstraDB uses its token for all three."""
     if cfg.serving_target == "astra":
         if not (cfg.astra_bundle and cfg.astra_token):
             raise PipelineError("SERVING_TARGET=astra needs ASTRA_SECURE_CONNECT_BUNDLE and ASTRA_TOKEN")
@@ -63,8 +66,13 @@ def connection_settings(cfg: Config) -> dict:
                 "password": cfg.astra_token, "keyspace": cfg.cassandra_keyspace,
                 "consistency": cfg.cassandra_consistency}
     if cfg.serving_target == "cassandra":
+        username, password = {
+            "loader": (cfg.cassandra_username, cfg.cassandra_password),
+            "reader": (cfg.cassandra_reader_username, cfg.cassandra_reader_password),
+            "admin": (cfg.cassandra_admin_username, cfg.cassandra_admin_password),
+        }[role]
         return {"target": "cassandra", "hosts": cfg.cassandra_hosts, "port": cfg.cassandra_port,
-                "username": cfg.cassandra_username, "password": cfg.cassandra_password,
+                "username": username, "password": password,
                 "keyspace": cfg.cassandra_keyspace, "consistency": cfg.cassandra_consistency,
                 "local_dc": cfg.cassandra_local_dc}
     raise PipelineError(f"SERVING_TARGET must be cassandra, astra or none, not {cfg.serving_target!r}")
@@ -98,13 +106,20 @@ def cql_statements(path: Path, keyspace: str) -> list[str]:
     return [s.strip() for s in text.split(";") if s.strip()]
 
 
-def ensure_schema(session, settings: dict):
-    # AstraDB has no CREATE KEYSPACE: the keyspace comes from the console (README).
-    if settings["target"] == "cassandra":
-        for stmt in cql_statements(CQL_DIR / "00_keyspace.cql", settings["keyspace"]):
+def ensure_schema(cluster, session, settings: dict):
+    """Create only what is missing. The loader role has no CREATE permission (D19), so a schema that
+    make cassandra-init already created is left alone instead of failing on IF NOT EXISTS.
+    AstraDB has no CREATE KEYSPACE: its keyspace comes from the console (README)."""
+    keyspace = settings["keyspace"]
+    existing = cluster.metadata.keyspaces.get(keyspace)
+    if existing is None and settings["target"] == "cassandra":
+        for stmt in cql_statements(CQL_DIR / "00_keyspace.cql", keyspace):
             session.execute(stmt)
-    for stmt in cql_statements(CQL_DIR / "01_tables.cql", settings["keyspace"]):
-        session.execute(stmt)
+    tables = set(existing.tables) if existing is not None else set()
+    for stmt in cql_statements(CQL_DIR / "01_tables.cql", keyspace):
+        name = re.search(r"EXISTS\s+\w+\.(\w+)", stmt).group(1)
+        if name not in tables:
+            session.execute(stmt)
 
 
 def write_partition(settings: dict, table: str, columns: list, rows, written):
@@ -147,7 +162,7 @@ def run(ctx, metrics):
         raise PipelineError(f"cannot reach {settings['target']}: {exc}. "
                             "For local Cassandra run make cassandra-up first") from exc
     try:
-        ensure_schema(session, settings)
+        ensure_schema(cluster, session, settings)
         for gold_table, (table, columns) in TABLES.items():
             path = cfg.table("gold", gold_table)
             if not lake.exists(path):

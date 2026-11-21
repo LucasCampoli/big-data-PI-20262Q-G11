@@ -12,7 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPO_ROOT / "config" / "pipeline.env"
 
 # Secrets, and the bundle path, which is local and points at credentials: logged only as set/unset.
-SECRET_KEYS = {"astra_token", "astra_bundle", "cassandra_password", "pii_hash_salt"}
+SECRET_KEYS = {"astra_token", "astra_bundle", "cassandra_password", "cassandra_reader_password",
+               "cassandra_admin_password", "pii_hash_salt"}
 
 
 def load_env_file(path: Path = ENV_FILE) -> bool:
@@ -55,8 +56,14 @@ class Config:
     cassandra_hosts: list = field(default_factory=list)
     cassandra_port: int = 9042
     cassandra_keyspace: str = "cloud_analytics"
+    # Local Cassandra runs with PasswordAuthenticator (D19): the pipeline loads as the loader role,
+    # the queries read as the reader role, and only make cassandra-init uses the superuser.
     cassandra_username: str = ""
     cassandra_password: str = ""
+    cassandra_reader_username: str = ""
+    cassandra_reader_password: str = ""
+    cassandra_admin_username: str = "cassandra"
+    cassandra_admin_password: str = ""
     cassandra_consistency: str = "LOCAL_QUORUM"
     cassandra_local_dc: str = "dc1"
     astra_bundle: str = ""
@@ -89,6 +96,10 @@ class Config:
             cassandra_keyspace=_env("CASSANDRA_KEYSPACE", "cloud_analytics"),
             cassandra_username=_env("CASSANDRA_USERNAME"),
             cassandra_password=_env("CASSANDRA_PASSWORD"),
+            cassandra_reader_username=_env("CASSANDRA_READER_USERNAME"),
+            cassandra_reader_password=_env("CASSANDRA_READER_PASSWORD"),
+            cassandra_admin_username=_env("CASSANDRA_ADMIN_USERNAME", "cassandra"),
+            cassandra_admin_password=_env("CASSANDRA_ADMIN_PASSWORD"),
             cassandra_consistency=_env("CASSANDRA_CONSISTENCY", "LOCAL_QUORUM"),
             cassandra_local_dc=_env("CASSANDRA_LOCAL_DC", "dc1"),
             astra_bundle=_env("ASTRA_SECURE_CONNECT_BUNDLE"),
@@ -121,3 +132,13 @@ class Config:
             else:
                 out[key] = value
         return out
+
+
+if __name__ == "__main__":
+    # python -m pipeline.config get VAR: the value the pipeline would use (shell first, then
+    # config/pipeline.env). The Makefile reads the cqlsh credentials this way.
+    import sys
+    if len(sys.argv) != 3 or sys.argv[1] != "get":
+        sys.exit("usage: python -m pipeline.config get VAR")
+    load_env_file()
+    print(_env(sys.argv[2]))

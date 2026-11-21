@@ -73,7 +73,7 @@ def main(argv=None) -> int:
     out = Path(args.out) if args.out else cfg.evidence
     out.mkdir(parents=True, exist_ok=True)
     try:
-        settings = connection_settings(cfg)
+        settings = connection_settings(cfg, "reader")
         cluster, session = connect(settings)
     except Exception as exc:
         log.error("cannot connect: %s", exc)

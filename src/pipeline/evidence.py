@@ -23,7 +23,7 @@ def cassandra_rows(cfg: Config) -> dict:
     if cfg.serving_target == "none":
         return {"status": "skipped"}
     try:
-        settings = connection_settings(cfg)
+        settings = connection_settings(cfg, "reader")
         cluster, session = connect(settings)
     except Exception as exc:
         return {"status": f"unavailable: {exc}"}

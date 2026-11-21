@@ -5,6 +5,17 @@ services:
   cassandra:
     image: cassandra:5.0
     container_name: cpa-cassandra
+    # Password authentication and role permissions instead of the image's allow-all (D19). The
+    # stock superuser is cassandra/cassandra until make cassandra-init replaces its password.
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        sed -i -E
+        -e 's/AllowAllAuthenticator/PasswordAuthenticator/'
+        -e 's/AllowAllAuthorizer/CassandraAuthorizer/'
+        /etc/cassandra/cassandra.yaml
+        && exec docker-entrypoint.sh cassandra -f
     ports:
       - "9042:9042"
     environment:
@@ -18,8 +29,8 @@ services:
       - cassandra-data:/var/lib/cassandra
       - ../cql:/cql:ro
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' > /dev/null"]
-      # cqlsh itself takes 10 to 15 s to start inside the container on WSL.
+      # nodetool needs no CQL login: healthy once the node accepts client connections.
+      test: ["CMD-SHELL", "nodetool statusbinary | grep -q running"]
       interval: 20s
       timeout: 40s
       retries: 20
