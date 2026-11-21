@@ -13,23 +13,29 @@ Cómo corre el pipeline hoy, medido en la corrida de la evidencia.
 | Archivos por partición | 1 (`FILES_PER_PARTITION`) | un archivo de 10 a 150 KB por día o por micro-batch (design §5.1) |
 | Java | JDK 21 (`PIPELINE_JAVA_HOME`) | Spark 4.2 corre sobre 17, 21 y 25; el pipeline acepta los tres, y la evidencia se generó con 21 |
 
-## Jobs y lo que midió la primera corrida
+## Tiempos de la corrida de la evidencia
 
-Primera corrida de `make rerun-evidence`, sobre un lake vacío. Una etapa del pipeline lanza varios jobs
-de Spark: cada `count`, cada escritura y cada lectura de métricas es un job.
+Las dos corridas de `make rerun-evidence` (`evidence/final/run_1_*.log` y `run_2_*.log`): la primera
+sobre un lake vacío, la segunda sin nada nuevo que ingerir. Segundos por etapa, del resumen de cada
+corrida.
 
-| Etapa | Qué hace | Trigger | Segundos | Jobs | Tareas | Shuffle escrito |
-| :--- | :--- | :--- | ---: | ---: | ---: | ---: |
-| `bronze-batch` | 7 CSV a Bronze, registro de ingestados | por corrida | 10,4 | 64 | 64 | 51 KB |
-| `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 7,4 | 25 | 109 | 4.569 KB |
-| `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 8,6 | 63 | 141 | 6.176 KB |
-| `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 2,3 | 20 | 126 | 964 KB |
-| `anomalies` | `cost_anomaly_mart` | por corrida | 4,4 | 45 | 235 | 1.287 KB |
-| `serving` | upsert de los dos marts en Cassandra y verificación | por corrida | 3,9 | 12 | 148 | 1.056 KB |
+| Etapa | Qué hace | Trigger | Primera | Re-ejecución |
+| :--- | :--- | :--- | ---: | ---: |
+| `bronze-batch` | 7 CSV a Bronze, registro de ingestados | por corrida | 12,4 | 2,4 |
+| `bronze-stream` | 120 JSONL a Bronze y Quarantine, 2 queries | `availableNow`, 10 archivos por micro-batch | 8,4 | 1,1 |
+| `silver` | 7 maestros y eventos conformados, reglas, joins, dedupe | por corrida | 10,0 | 13,1 |
+| `gold` | `org_daily_usage_by_service`, conciliación | por corrida | 2,3 | 2,7 |
+| `anomalies` | `cost_anomaly_mart` | por corrida | 3,2 | 3,1 |
+| `marts` | los 5 marts de Q2 a Q5, con sus controles | por corrida | 5,7 | 7,0 |
+| `serving` | upsert de las 6 tablas en Cassandra y verificación | por corrida | 5,4 | 6,4 |
+| total | | | 47,3 | 35,9 |
 
-La corrida completa tarda unos 37 segundos y la re-ejecución unos 29 (los tiempos varían entre corridas y con la carga de la máquina): el stream no lee nada y la carga batch
-saltea los 7 CSV registrados. Silver, Gold y la carga se rehacen enteros en las dos (D8).
+En la re-ejecución el stream no lee nada y la carga batch saltea los 7 CSV registrados; Silver, Gold,
+los marts y la carga se rehacen enteros en las dos (D8). Los tiempos varían entre corridas y con la
+carga de la máquina. La cantidad de jobs, tareas y shuffle por etapa la medimos con el event log en
+la entrega 2 (`docs/entrega-2.pdf`, ficha de ejecución): Silver es la etapa que más mueve, unos 6 MB
+de shuffle.
 
 El shuffle más grande es el de Silver: el dedupe por `event_id` es una ventana particionada por
 `event_id` y mueve todos los eventos. La agregación de Gold mueve menos porque agrega parcial antes
-del exchange, que es el combiner del §7 del diseño (nodos 2 a 4 del plan en `docs/entrega-2.md` §3.3).
+del exchange, que es el combiner del §7 del diseño (nodos 2 a 4 de `evidence/final/run_1_gold_explain.txt`).

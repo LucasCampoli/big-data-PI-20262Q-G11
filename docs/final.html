@@ -1,0 +1,1476 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cloud Provider Analytics, MVP final, grupo 11</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  html { font-size: 10pt; }
+  body { font-family: Georgia, "Times New Roman", serif; line-height: 1.34; color: #1a1a1a;
+         max-width: 195mm; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .3rem; }
+  h2 { font-size: 1.2rem; margin: 1.1rem 0 .35rem; border-bottom: 1px solid #ccc;
+        padding-bottom: .15rem; page-break-after: avoid; }
+  h3 { font-size: 1rem; margin: .75rem 0 .25rem; page-break-after: avoid; }
+  h4 { font-size: .98rem; margin: .8rem 0 .25rem; page-break-after: avoid; }
+  p, li { orphans: 3; widows: 3; }
+  table { border-collapse: collapse; width: 100%; margin: .4rem 0 .7rem;
+           font-family: "Helvetica Neue", Arial, sans-serif; font-size: .74rem;
+           page-break-inside: avoid; }
+  th, td { border: 1px solid #bbb; padding: 3px 5px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: 600; }
+  code { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: .8em;
+          background: #f4f4f4; padding: 0 2px; }
+  pre { background: #f7f7f7; border: 1px solid #ddd; padding: 5px 7px; overflow-x: auto;
+         font-size: .85rem; line-height: 1.3; page-break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  figure.arch { margin: 0; text-align: center; page-break-inside: avoid;
+                 page-break-before: always; page-break-after: always; }
+  figure.arch svg { max-height: 258mm; max-width: 100%; height: auto; width: auto; }
+  section + section { page-break-before: always; }
+  a { color: #11457a; text-decoration: none; }
+  figure.arch { page-break-before: auto; page-break-after: auto; } figure.arch svg { max-height: 200mm; } h2[id="2-arquitectura-final"] { page-break-before: always; } section#execution, section#decisions { page-break-before: auto; margin-top: 1.4rem; }
+</style>
+<section><h1 id="cloud-provider-analytics-mvp-final">Cloud Provider Analytics, MVP final</h1>
+<p>Proyecto integrador de Big Data, ITBA, segundo cuatrimestre 2026.
+Evaluación final: MVP integrado, demostración y defensa técnica. Versión 1, 2026-11-21.</p>
+<p>Grupo 11: Ivan Odzomek, Lucas Campoli, Matias Sapino, Diego Rabinovich, Diego Badin.</p>
+<p>El pipeline corre de punta a punta sobre los datos provistos: Landing, Bronze, Silver y Gold en
+Parquet, con ingesta batch y Structured Streaming, reglas de calidad con Quarantine, siete marts, un
+componente de anomalías y serving en Cassandra y AstraDB para las cinco consultas obligatorias y
+una de anomalías. Este documento resume la solución y remite a la evidencia. Los pasos exactos para
+correrla están en el <code>README.md</code>, las decisiones en <code>DECISIONS.md</code> y la evidencia en
+<code>evidence/final/</code>.</p>
+<h2 id="1-que-cambio-desde-la-entrega-2">1. Qué cambió desde la entrega 2</h2>
+<p>La entrega 2 tuvo un 10. La mejora que marcó la cátedra fue Q2: se leían hasta 14 días de una
+partición y el cliente sumaba y ordenaba. Pasó a una tabla Top-N precalculada. El resto es el
+alcance del final.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Cambio</th>
+<th style="text-align: left;">Por qué</th>
+<th style="text-align: left;">Decisión</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Q2 sale de <code>top_services_14d_by_org</code>, precalculada y rankeada, con <code>LIMIT N</code></td>
+<td style="text-align: left;">modelo query-first: la consulta no agrega en el cliente</td>
+<td style="text-align: left;">D11</td>
+</tr>
+<tr>
+<td style="text-align: left;">Marts de Soporte, revenue y GenAI, más el diario de tickets que sirve a Q3</td>
+<td style="text-align: left;">Q3, Q4 y Q5 de la consigna (§7.3, §7.4)</td>
+<td style="text-align: left;">D18</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q3, Q4 y Q5 en Cassandra y AstraDB, por organización</td>
+<td style="text-align: left;">el supuesto del diseño, con la misma partition key que Q1</td>
+<td style="text-align: left;">D11</td>
+</tr>
+<tr>
+<td style="text-align: left;">Cassandra local con login y dos roles de permisos mínimos; prueba de secretos</td>
+<td style="text-align: left;">seguridad (§7.2.7)</td>
+<td style="text-align: left;">D19</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>make health</code> sobre el resumen de cada corrida, con alertas</td>
+<td style="text-align: left;">observabilidad (§7.2.7)</td>
+<td style="text-align: left;">D20</td>
+</tr>
+<tr>
+<td style="text-align: left;">Diccionario de datos generado desde el lake (<code>docs/data_dictionary.md</code>)</td>
+<td style="text-align: left;">artefacto del final (§7.5)</td>
+<td style="text-align: left;"></td>
+</tr>
+<tr>
+<td style="text-align: left;">AstraDB como destino de la demo</td>
+<td style="text-align: left;">la defensa es remota</td>
+<td style="text-align: left;">D16</td>
+</tr>
+</tbody>
+</table>
+<p>El §2.2 de la consigna pide un entorno equivalente a Colab. Corremos el mismo PySpark 4.2.0 fijado
+en <code>requirements.txt</code>, en modo <code>local[4]</code> sobre WSL2 con JDK 21. No lo corrimos en Google Colab
+(D16).</p>
+<h2 id="2-arquitectura-final">2. Arquitectura final</h2>
+<p><figure class="arch"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 958" font-family="Helvetica, Arial, sans-serif" font-size="13" role="img" aria-label="Cloud Provider Analytics, arquitectura final">
+  <title>Cloud Provider Analytics, arquitectura final, lo implementado en el MVP, 2026-11-21</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a4a4a"/>
+    </marker>
+    <style>
+      .zone { fill: #eef4fb; stroke: #4a6fa5; stroke-width: 1.2; }
+      .job { fill: #fdf6e3; stroke: #b58900; stroke-width: 1.2; }
+      .plain { fill: #ffffff; stroke: #7a7a7a; stroke-width: 1.2; }
+      .band { fill: #f6f6f2; stroke: #9a9a8c; stroke-width: 1.2; }
+      .group { fill: none; stroke: #b58900; stroke-width: 1; stroke-dasharray: 5 4; }
+      .flow { stroke: #4a4a4a; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+      .dq { stroke: #8a4a4a; stroke-width: 1.3; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrow); }
+      .h { font-weight: bold; font-size: 14px; fill: #17293f; }
+      .t { fill: #2e2e26; }
+      .lbl { font-size: 12px; fill: #333333; }
+      .lbldq { font-size: 12px; fill: #8a4a4a; }
+      .title { font-size: 15px; font-weight: bold; fill: #17293f; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="1000" height="958" fill="#ffffff"/>
+  <text class="title" x="500" y="28" text-anchor="middle">Cloud Provider Analytics · arquitectura final · lo implementado en el MVP · 2026-11-21</text>
+
+  <!-- Sources and Landing -->
+  <rect class="plain" x="60" y="50" width="600" height="50" rx="6"/>
+  <text x="360" y="70" text-anchor="middle"><tspan class="h">Fuentes</tspan></text>
+  <text class="t" x="360" y="89" text-anchor="middle">6 maestros CSV + facturación · usage_events_stream, 120 partes JSONL</text>
+
+  <rect class="zone" x="60" y="130" width="600" height="50" rx="6"/>
+  <text x="360" y="150" text-anchor="middle"><tspan class="h">Landing · data/landing</tspan></text>
+  <text class="t" x="360" y="169" text-anchor="middle">inmutable, como la recibimos; nada la escribe</text>
+
+  <!-- Ingestion jobs -->
+  <rect class="group" x="45" y="208" width="630" height="128" rx="8"/>
+  <text class="lbl" x="58" y="224">Ingesta · PySpark 4.2</text>
+  <rect class="job" x="60" y="232" width="280" height="92" rx="6"/>
+  <text x="200" y="252" text-anchor="middle"><tspan class="h">Carga batch</tspan></text>
+  <text class="t" x="200" y="272" text-anchor="middle">esquema explícito y chequeo</text>
+  <text class="t" x="200" y="289" text-anchor="middle">del encabezado CSV</text>
+  <text class="t" x="200" y="306" text-anchor="middle">registro de ingestados con sha256</text>
+
+  <rect class="job" x="360" y="232" width="300" height="92" rx="6"/>
+  <text x="510" y="252" text-anchor="middle"><tspan class="h">Structured Streaming</tspan></text>
+  <text class="t" x="510" y="272" text-anchor="middle">availableNow, 10 archivos por micro-batch</text>
+  <text class="t" x="510" y="289" text-anchor="middle">watermark de 1 h sobre ingest_ts</text>
+  <text class="t" x="510" y="306" text-anchor="middle">dedupe por event_id · 2 checkpoints</text>
+
+  <!-- Zones -->
+  <rect class="zone" x="60" y="372" width="600" height="56" rx="6"/>
+  <text x="360" y="393" text-anchor="middle"><tspan class="h">Bronze · Parquet con Snappy</tspan></text>
+  <text class="t" x="360" y="413" text-anchor="middle">eventos y maestros por ingest_date · billing por month</text>
+
+  <rect class="zone" x="60" y="470" width="600" height="74" rx="6"/>
+  <text x="360" y="491" text-anchor="middle"><tspan class="h">Silver · reconstrucción batch completa</tspan></text>
+  <text class="t" x="360" y="511" text-anchor="middle">eventos por event_date y 7 maestros conformados</text>
+  <text class="t" x="360" y="529" text-anchor="middle">reglas D6 y D7 · joins broadcast con customers_orgs y resources · dedupe exacto</text>
+
+  <rect class="zone" x="60" y="586" width="600" height="92" rx="6"/>
+  <text x="360" y="607" text-anchor="middle"><tspan class="h">Gold · 7 marts, cada uno conciliado antes de publicarse</tspan></text>
+  <text class="t" x="360" y="627" text-anchor="middle">org_daily_usage_by_service, conciliado contra Silver a 0,01 USD</text>
+  <text class="t" x="360" y="645" text-anchor="middle">cost_anomaly_mart, z-score modificado con MAD sobre 28 días</text>
+  <text class="t" x="360" y="663" text-anchor="middle">Q2 a Q5: top-N de 14 días · tickets por día y severidad · revenue mensual · tokens GenAI</text>
+
+  <rect class="plain" x="60" y="720" width="600" height="74" rx="6"/>
+  <text x="360" y="741" text-anchor="middle"><tspan class="h">Cassandra 5.0 en Docker, con login</tspan></text>
+  <text class="t" x="360" y="761" text-anchor="middle">keyspace cloud_analytics · 6 tablas query-first, una por consulta</text>
+  <text class="t" x="360" y="779" text-anchor="middle">partition key org_id · roles cpa_loader (escribe) y cpa_reader (lee)</text>
+
+  <rect class="plain" x="700" y="720" width="260" height="74" rx="6"/>
+  <text x="830" y="741" text-anchor="middle"><tspan class="h">AstraDB · destino de la demo</tspan></text>
+  <text class="t" x="830" y="761" text-anchor="middle">mismo cargador, por configuración</text>
+  <text class="t" x="830" y="779" text-anchor="middle">keyspace cpa · mismas 6 tablas</text>
+
+  <rect class="plain" x="60" y="828" width="600" height="50" rx="6"/>
+  <text x="360" y="848" text-anchor="middle"><tspan class="h">Consumo</tspan></text>
+  <text class="t" x="360" y="867" text-anchor="middle">Q1 a Q6: FinOps, Soporte, revenue y GenAI · cqlsh y driver de Python</text>
+
+  <rect class="zone" x="740" y="470" width="220" height="74" rx="6"/>
+  <text x="850" y="491" text-anchor="middle"><tspan class="h">Quarantine</tspan></text>
+  <text class="t" x="850" y="511" text-anchor="middle">4 tablas, una por escritor</text>
+  <text class="t" x="850" y="529" text-anchor="middle">por quarantine_date</text>
+
+  <rect class="band" x="45" y="902" width="915" height="44" rx="6"/>
+  <text class="t" x="502" y="920" text-anchor="middle"><tspan font-weight="bold">Transversales:</tspan> compuertas de calidad y conciliación · log y resumen JSON por run_id · make health con alertas</text>
+  <text class="t" x="502" y="937" text-anchor="middle">linaje por columnas técnicas · email con hash en Silver · roles en Cassandra · secretos fuera de git</text>
+
+  <!-- Main flow -->
+  <path class="flow" d="M360,100 L360,128"/>
+  <path class="flow" d="M290,180 L230,230"/>
+  <path class="flow" d="M430,180 L490,230"/>
+  <path class="flow" d="M200,324 L290,370"/>
+  <text class="lbl" x="214" y="352">append</text>
+  <path class="flow" d="M510,324 L430,370"/>
+  <text class="lbl" x="476" y="352">append</text>
+  <path class="flow" d="M360,428 L360,468"/>
+  <text class="lbl" x="370" y="453">batch, D+1</text>
+  <path class="flow" d="M360,544 L360,584"/>
+  <text class="lbl" x="370" y="569">groupBy y conciliación</text>
+  <path class="flow" d="M360,678 L360,718"/>
+  <text class="lbl" x="370" y="703">foreachPartition con el driver, upsert por clave</text>
+  <path class="flow" d="M360,794 L360,826"/>
+  <path class="flow" d="M660,640 L830,640 L830,718"/>
+  <text class="lbl" x="672" y="632">segundo destino, upsert</text>
+  <path class="flow" d="M830,794 L830,853 L662,853"/>
+
+  <!-- Quality path -->
+  <path class="dq" d="M675,280 L800,280 L800,468"/>
+  <text class="lbldq" x="686" y="272">fallas de parseo</text>
+  <path class="dq" d="M660,507 L738,507"/>
+  <text class="lbldq" x="664" y="498">reglas</text>
+  <path class="dq" d="M900,470 L900,155 L662,155"/>
+  <text class="lbldq" x="680" y="146">arreglar y reprocesar desde Landing</text>
+</svg>
+</figure></p>
+<p>La figura muestra solo lo que corre. El diseño es el híbrido estilo Lambda de D3: el streaming
+hace append a Bronze y todo lo demás es batch, porque un watermark sobre el tiempo del evento
+descartaría casi todos los eventos (entre el 90% y el 97,5% con un día, <code>evidence/entrega-2/stream_bronze.md</code>).
+El speed layer, la vista intradía provisoria, no está implementado, así que la latencia de Gold y de
+Cassandra es D+1.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Etapa</th>
+<th style="text-align: left;">Comando</th>
+<th style="text-align: left;">Entrada</th>
+<th style="text-align: left;">Salida</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Carga batch</td>
+<td style="text-align: left;"><code>make bronze</code></td>
+<td style="text-align: left;">7 CSV de Landing</td>
+<td style="text-align: left;"><code>bronze/&lt;maestro&gt;</code>, <code>quarantine/masters_parse</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Streaming</td>
+<td style="text-align: left;"><code>make stream</code></td>
+<td style="text-align: left;"><code>usage_events_stream/*.jsonl</code></td>
+<td style="text-align: left;"><code>bronze/usage_events</code>, <code>quarantine/usage_events_parse</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Silver</td>
+<td style="text-align: left;"><code>make silver</code></td>
+<td style="text-align: left;">Bronze</td>
+<td style="text-align: left;"><code>silver/*</code>, <code>quarantine/*_rules</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Gold</td>
+<td style="text-align: left;"><code>make gold</code></td>
+<td style="text-align: left;">Silver</td>
+<td style="text-align: left;">7 marts en <code>gold/</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Serving</td>
+<td style="text-align: left;"><code>make serve</code> y <code>make queries</code></td>
+<td style="text-align: left;">Gold</td>
+<td style="text-align: left;">6 tablas en Cassandra o AstraDB, salidas de Q1 a Q6</td>
+</tr>
+<tr>
+<td style="text-align: left;">Salud</td>
+<td style="text-align: left;"><code>make health</code></td>
+<td style="text-align: left;"><code>logs/*.json</code></td>
+<td style="text-align: left;">OK, WARN o ALERT por control</td>
+</tr>
+</tbody>
+</table>
+<p><code>make run</code> corre todas las etapas en orden. Cada corrida tiene un <code>run_id</code>, escribe
+<code>logs/&lt;run_id&gt;.log</code> y un resumen JSON con la configuración y las métricas de cada etapa, y termina
+con código 1 si alguna falla.</p>
+<h2 id="3-procesamiento-con-spark">3. Procesamiento con Spark</h2>
+<p>Bronze, Silver y el mart diario no cambiaron desde la entrega 2, que los describe en detalle
+(<code>docs/entrega-2.md</code> §3). En corto:</p>
+<ul>
+<li>Bronze: esquema explícito, encabezado CSV comparado con el esquema, <code>ingest_ts</code>, <code>ingest_date</code> y
+  <code>source_file</code>. El stream separa las fallas de parseo antes del dedupe y hace
+  <code>withWatermark("ingest_ts", "1 hour")</code> con <code>dropDuplicatesWithinWatermark</code>, con un checkpoint por
+  query. 43.200 eventos en 12 micro-batches, 0 descartados.</li>
+<li>Silver se reconstruye entero desde Bronze en cada corrida (D8): reglas de D6 y D7, joins broadcast
+  contra <code>customers_orgs</code> y <code>resources</code>, dedupe exacto por <code>event_id</code> y una columna por métrica.</li>
+<li><code>org_daily_usage_by_service</code> es un <code>groupBy</code> por el grano del mart. Antes de publicarse se
+  concilia contra Silver: claves no nulas, filas igual al grano y costo a 0,01 USD por organización
+  y día.</li>
+</ul>
+<p>El plan físico de esa agregación (<code>evidence/final/run_1_gold_explain.txt</code>) es el job de MapReduce
+del §7 del diseño:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Nodo del plan</th>
+<th style="text-align: left;">Etapa de MapReduce</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Scan parquet</code> que lee 11 de las 28 columnas de Silver</td>
+<td style="text-align: left;">input splits y lectura del map</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>HashAggregate</code> con <code>partial_sum</code> y <code>partial_count</code></td>
+<td style="text-align: left;">combiner, suma local por tarea</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Exchange hashpartitioning(org_id, event_date, service, 8)</code></td>
+<td style="text-align: left;">partitioner y shuffle sobre la clave completa</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>HashAggregate</code> con <code>sum</code> y <code>count</code></td>
+<td style="text-align: left;">reduce</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AdaptiveSparkPlan</code></td>
+<td style="text-align: left;">AQE ajusta las particiones del shuffle después de medirlas</td>
+</tr>
+</tbody>
+</table>
+<h3 id="31-los-marts-de-q2-a-q5">3.1 Los marts de Q2 a Q5</h3>
+<p>Una etapa nueva, <code>marts</code>, arma los cinco marts que faltaban. Cada uno se controla antes de
+escribirse y, si no pasa, la corrida no lo publica (D18):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mart</th>
+<th style="text-align: left;">Grano</th>
+<th style="text-align: right;">Filas</th>
+<th style="text-align: left;">Control antes de publicar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>top_services_14d_by_org</code></td>
+<td style="text-align: left;"><code>org_id</code>, <code>as_of_date</code>, <code>rank</code></td>
+<td style="text-align: right;">15.599</td>
+<td style="text-align: left;">el total de 14 días de cada organización coincide con el mart diario; rangos sin huecos</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tickets_by_org_date</code></td>
+<td style="text-align: left;"><code>org_id</code>, <code>ticket_date</code>, <code>severity</code></td>
+<td style="text-align: right;">984</td>
+<td style="text-align: left;">suma los 1.000 tickets de Silver</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tickets_daily_by_org</code></td>
+<td style="text-align: left;"><code>org_id</code>, <code>ticket_date</code></td>
+<td style="text-align: right;">944</td>
+<td style="text-align: left;">suma los 1.000 tickets de Silver</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>revenue_by_org_month</code></td>
+<td style="text-align: left;"><code>org_id</code>, <code>month</code></td>
+<td style="text-align: right;">240</td>
+<td style="text-align: left;">240 facturas; revenue a 0,01 USD de Silver por organización y mes</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>genai_tokens_by_org_date</code></td>
+<td style="text-align: left;"><code>org_id</code>, <code>usage_date</code></td>
+<td style="text-align: right;">1.131</td>
+<td style="text-align: left;">coincide fila por fila, en tokens y costo, con las filas genai del mart diario</td>
+</tr>
+</tbody>
+</table>
+<p><code>top_services_14d_by_org</code> es un join por rango entre el mart diario y sus 60 fechas de corte, que
+Spark resuelve con un broadcast de las fechas, y una ventana <code>row_number</code> por organización y fecha
+de corte. <code>tickets_by_org_date</code> conserva el grano de la consigna; Q3 pide una línea por día, que es
+<code>tickets_daily_by_org</code>. En GenAI, solo los eventos de la versión 2 traen tokens: 283 de las 1.131
+filas tienen costo y tokens null, nunca 0.</p>
+<h3 id="32-particiones-y-archivos">3.2 Particiones y archivos</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tabla</th>
+<th style="text-align: left;">Partición</th>
+<th style="text-align: right;">Particiones</th>
+<th style="text-align: left;">Por qué</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>bronze/usage_events</code></td>
+<td style="text-align: left;"><code>ingest_date</code></td>
+<td style="text-align: right;">1</td>
+<td style="text-align: left;">un archivo por micro-batch, 12 de unos 148 KB</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>silver/usage_events</code></td>
+<td style="text-align: left;"><code>event_date</code></td>
+<td style="text-align: right;">60</td>
+<td style="text-align: left;">un archivo de unos 46 KB por día</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/org_daily_usage_by_service</code>, <code>gold/cost_anomaly_mart</code></td>
+<td style="text-align: left;"><code>usage_date</code></td>
+<td style="text-align: right;">60</td>
+<td style="text-align: left;">un archivo por día</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/top_services_14d_by_org</code></td>
+<td style="text-align: left;"><code>as_of_date</code></td>
+<td style="text-align: right;">60</td>
+<td style="text-align: left;">un archivo por fecha de corte</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/revenue_by_org_month</code></td>
+<td style="text-align: left;"><code>month</code></td>
+<td style="text-align: right;">3</td>
+<td style="text-align: left;">como la facturación</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/tickets_*</code>, <code>gold/genai_tokens_by_org_date</code></td>
+<td style="text-align: left;">sin particionar</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: left;">menos de 1.200 filas: un archivo en lugar de cientos de pocas filas</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-calidad-y-quarantine">4. Calidad y Quarantine</h2>
+<p>Las reglas no cambiaron desde la entrega 2 (D6, D7, <code>docs/entrega-2.md</code> §4). Las tres de la
+consigna se cumplen en Silver: 0 <code>event_id</code> nulos y 0 duplicados, 211 costos negativos marcados con
+<code>cost_anomaly_flag</code>, y los 42.323 eventos con <code>value</code> tienen <code>unit</code>, el 100% después de imputar
+2.075. Con los datos reales Quarantine queda vacía, en 0% de los eventos y del costo contra el 1%
+de O3. Las muestras salen de los fixtures de <code>tests/fixtures/landing/</code>, que ejercitan cada regla en
+un lake aparte (<code>make fixtures</code>, <code>evidence/final/counts_fixtures.json</code>).</p>
+<p>Los marts nuevos suman sus propios controles (§3.1), y <code>make health</code> mira O3 y el crecimiento de
+Quarantine en cada corrida (§7).</p>
+<h2 id="5-serving-en-cassandra-y-astradb">5. Serving en Cassandra y AstraDB</h2>
+<p>Cada consulta tiene una tabla con exactamente las filas que devuelve. Cassandra lee un tramo de una
+partición y el cliente no suma ni ordena (D11).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Consulta</th>
+<th style="text-align: left;">Tabla</th>
+<th style="text-align: left;">Partition key</th>
+<th style="text-align: left;">Clustering</th>
+<th style="text-align: left;">Lectura</th>
+<th style="text-align: left;">Filas por organización</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Q1, costo y requests diarios por servicio en un rango</td>
+<td style="text-align: left;"><code>org_daily_usage_by_service</code></td>
+<td style="text-align: left;"><code>org_id</code></td>
+<td style="text-align: left;"><code>usage_date DESC</code>, <code>service</code></td>
+<td style="text-align: left;">rango de fechas</td>
+<td style="text-align: left;">33 a 286</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q2, top-N de servicios por costo en 14 días</td>
+<td style="text-align: left;"><code>top_services_14d_by_org</code></td>
+<td style="text-align: left;"><code>org_id</code></td>
+<td style="text-align: left;"><code>as_of_date DESC</code>, <code>rank</code></td>
+<td style="text-align: left;">una fecha de corte, <code>LIMIT N</code></td>
+<td style="text-align: left;">60 a 360</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q3, tickets críticos y tasa de SLA breach por día en 30 días</td>
+<td style="text-align: left;"><code>tickets_daily_by_org</code></td>
+<td style="text-align: left;"><code>org_id</code></td>
+<td style="text-align: left;"><code>ticket_date DESC</code></td>
+<td style="text-align: left;">rango de 30 días</td>
+<td style="text-align: left;">4 a 22</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q4, revenue mensual en USD</td>
+<td style="text-align: left;"><code>revenue_by_org_month</code></td>
+<td style="text-align: left;"><code>org_id</code></td>
+<td style="text-align: left;"><code>month DESC</code></td>
+<td style="text-align: left;">la partición</td>
+<td style="text-align: left;">3</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q5, tokens GenAI y costo por día</td>
+<td style="text-align: left;"><code>genai_tokens_by_org_date</code></td>
+<td style="text-align: left;"><code>org_id</code></td>
+<td style="text-align: left;"><code>usage_date DESC</code></td>
+<td style="text-align: left;">rango de fechas</td>
+<td style="text-align: left;">30 a 58</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q6, días anómalos</td>
+<td style="text-align: left;"><code>cost_anomalies_by_org</code></td>
+<td style="text-align: left;"><code>org_id</code></td>
+<td style="text-align: left;"><code>usage_date DESC</code>, <code>service</code></td>
+<td style="text-align: left;">rango de fechas</td>
+<td style="text-align: left;">33 a 286</td>
+</tr>
+</tbody>
+</table>
+<p>La partición crece con los días y no con el tamaño de la organización: el peor caso son 2.190 filas
+por año, unas 300 KB, así que no hace falta un bucket por mes. Replicación local:
+<code>NetworkTopologyStrategy</code> con <code>dc1: 1</code>; en producción sería <code>dc1: 3</code> con <code>LOCAL_QUORUM</code> para leer y
+escribir, que tolera la caída de un nodo y siempre lee la última carga. AstraDB fija su propia
+replicación y escribe con <code>LOCAL_QUORUM</code>.</p>
+<p>La carga usa el driver de Python desde <code>foreachPartition</code>, porque el conector oficial no tiene
+versión para Spark 4 (D16). Cada <code>INSERT</code> es un upsert por primary key, y al terminar la carga
+compara las filas escritas con las de Gold, tabla por tabla; si no coinciden, la corrida falla.</p>
+<p>La carga entra como <code>cpa_loader</code> y las consultas leen como <code>cpa_reader</code> (§7). Las seis tablas
+quedaron con las filas de Gold: 11.050, 15.599, 944, 240, 1.131 y 11.050. Cada consulta está en
+<code>cql/q*.cql</code> y se corre por cqlsh y por el driver de Python desde el mismo archivo (<code>make queries</code>);
+las salidas completas están en <code>evidence/final/serving_q*_cqlsh.txt</code> y <code>serving_q*_driver.txt</code>.</p>
+<p>Q1, <code>org_okep7y6w</code> del 1 al 7 de agosto (primeras filas de 25):</p>
+<pre><code class="language-text">SELECT usage_date, service, daily_cost_usd, requests, events
+FROM cloud_analytics.org_daily_usage_by_service
+WHERE org_id = 'org_okep7y6w'
+  AND usage_date &gt;= '2025-08-01' AND usage_date &lt;= '2025-08-07';
+
+ usage_date | service    | daily_cost_usd | requests | events
+------------+------------+----------------+----------+--------
+ 2025-08-07 |    compute |       191.8968 |      212 |      3
+ 2025-08-07 | networking |         3.8985 |      378 |      6
+ 2025-08-06 | networking |         0.3809 |     null |      3
+...
+(25 rows)
+</code></pre>
+<p>Q2, el top 3 de los 14 días que terminan el 31 de agosto. Cassandra devuelve 3 filas ya ordenadas:</p>
+<pre><code class="language-text">SELECT rank, service, cost_14d_usd, days_with_usage, window_start
+FROM cloud_analytics.top_services_14d_by_org
+WHERE org_id = 'org_okep7y6w' AND as_of_date = '2025-08-31'
+LIMIT 3;
+
+ rank | service  | cost_14d_usd | days_with_usage | window_start
+------+----------+--------------+-----------------+--------------
+    1 |    genai |     211.0267 |              10 |   2025-08-18
+    2 |  storage |     117.8743 |              13 |   2025-08-18
+    3 | database |      90.8801 |               9 |   2025-08-18
+</code></pre>
+<p>Q3, <code>org_kdgigatj</code> del 2 al 31 de agosto, una fila por día con tickets:</p>
+<pre><code class="language-text">SELECT ticket_date, tickets, critical_tickets, sla_breached_tickets, sla_breach_rate, csat_avg
+FROM cloud_analytics.tickets_daily_by_org
+WHERE org_id = 'org_kdgigatj'
+  AND ticket_date &gt;= '2025-08-02' AND ticket_date &lt;= '2025-08-31';
+
+ ticket_date | tickets | critical_tickets | sla_breached_tickets | sla_breach_rate | csat_avg
+-------------+---------+------------------+----------------------+-----------------+----------
+  2025-08-20 |       1 |                0 |                    1 |               1 |        4
+  2025-08-19 |       1 |                0 |                    0 |               0 |     null
+  2025-08-09 |       1 |                1 |                    0 |               0 |     null
+...
+(6 rows)
+</code></pre>
+<p>Q4, revenue mensual de <code>org_okep7y6w</code>:</p>
+<pre><code class="language-text">SELECT month, invoices, subtotal_usd, credits_usd, taxes_usd, revenue_usd, currency, exchange_rate_applied
+FROM cloud_analytics.revenue_by_org_month
+WHERE org_id = 'org_okep7y6w';
+
+ month      | invoices | subtotal_usd | credits_usd | taxes_usd | revenue_usd | currency | exchange_rate_applied
+------------+----------+--------------+-------------+-----------+-------------+----------+-----------------------
+ 2025-08-01 |        1 |       972.36 |        5.31 |     204.2 |     1171.25 |      USD |                     1
+ 2025-07-01 |        1 |       857.31 |        3.38 |    180.04 |     1033.97 |      USD |                     1
+ 2025-06-01 |        1 |      1205.25 |       12.86 |     253.1 |     1445.49 |      USD |                     1
+</code></pre>
+<p>Q5, tokens y costo de GenAI de <code>org_okep7y6w</code> en agosto (primeras filas):</p>
+<pre><code class="language-text">SELECT usage_date, genai_tokens, genai_cost_usd, usd_per_1k_tokens, events, events_with_tokens
+FROM cloud_analytics.genai_tokens_by_org_date
+WHERE org_id = 'org_okep7y6w'
+  AND usage_date &gt;= '2025-08-01' AND usage_date &lt;= '2025-08-31';
+
+ usage_date | genai_tokens | genai_cost_usd | usd_per_1k_tokens | events | events_with_tokens
+------------+--------------+----------------+-------------------+--------+--------------------
+ 2025-08-30 |         3726 |         0.0097 |          0.002603 |      3 |                  3
+ 2025-08-29 |         2932 |         0.2939 |          0.100239 |      3 |                  3
+ 2025-08-28 |         1468 |        18.7061 |          12.74258 |      3 |                  3
+...
+</code></pre>
+<p>El <code>null</code> de Q1 es un día sin requests medidos y el de Q3 un día sin respuestas de CSAT válidas: no
+son ceros (D6, D18). Q6 lee 118 filas puntuadas de agosto y devuelve 8 días marcados, entre ellos el
+pico de compute del 7 de agosto (<code>serving_q6_*.txt</code>).</p>
+<p>AstraDB, el destino de la demo, usa el mismo cargador y las mismas consultas, cambiando solo la
+conexión (<code>SERVING_TARGET=astra</code>, bundle y token por variables de entorno, fuera del repo). El
+keyspace <code>cpa</code> se crea desde la consola, porque AstraDB no admite <code>CREATE KEYSPACE</code>, y las tablas
+salen del mismo <code>cql/01_tables.cql</code>. Cargamos Gold dos veces:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tabla en AstraDB</th>
+<th style="text-align: right;">Primera carga</th>
+<th style="text-align: right;">Segunda carga</th>
+<th style="text-align: right;">Gold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>cpa.org_daily_usage_by_service</code></td>
+<td style="text-align: right;">11.050</td>
+<td style="text-align: right;">11.050</td>
+<td style="text-align: right;">11.050</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cpa.top_services_14d_by_org</code></td>
+<td style="text-align: right;">15.599</td>
+<td style="text-align: right;">15.599</td>
+<td style="text-align: right;">15.599</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cpa.tickets_daily_by_org</code></td>
+<td style="text-align: right;">944</td>
+<td style="text-align: right;">944</td>
+<td style="text-align: right;">944</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cpa.revenue_by_org_month</code></td>
+<td style="text-align: right;">240</td>
+<td style="text-align: right;">240</td>
+<td style="text-align: right;">240</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cpa.genai_tokens_by_org_date</code></td>
+<td style="text-align: right;">1.131</td>
+<td style="text-align: right;">1.131</td>
+<td style="text-align: right;">1.131</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cpa.cost_anomalies_by_org</code></td>
+<td style="text-align: right;">11.050</td>
+<td style="text-align: right;">11.050</td>
+<td style="text-align: right;">11.050</td>
+</tr>
+</tbody>
+</table>
+<p>Cada carga tarda unos 150 segundos, contra unos 6 en local, porque cada escritura cruza internet con
+<code>LOCAL_QUORUM</code> sobre tres réplicas. Q1 a Q6 devuelven en AstraDB las mismas filas que en local
+(<code>serving_q*_driver_astra.txt</code>, <code>counts_astra_load_*.json</code>, <code>astra_load_*.log</code>). En la evidencia
+copiada, la ruta local y el host de la base quedan enmascarados, y el token no aparece en ningún
+archivo del repositorio.</p>
+<h2 id="6-analitica-anomalias-de-costo">6. Analítica: anomalías de costo</h2>
+<p><code>cost_anomaly_mart</code> compara el costo de cada día con los 28 días previos de la misma organización y
+servicio, con el z-score modificado <code>0,6745 × (x − mediana) / MAD</code>. Si MAD es 0, cae a la desviación
+absoluta media. Un día con menos de 14 días de historia no se puntúa. El corte es 3,5 (D12).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Medida</th>
+<th style="text-align: right;">Valor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">filas puntuadas</td>
+<td style="text-align: right;">7.043 de 11.050 (63,7%)</td>
+</tr>
+<tr>
+<td style="text-align: left;">días marcados</td>
+<td style="text-align: right;">180 (2,56% de los puntuados): 138 picos y 42 caídas</td>
+</tr>
+<tr>
+<td style="text-align: left;">organizaciones con al menos un día marcado</td>
+<td style="text-align: right;">69 de 80</td>
+</tr>
+<tr>
+<td style="text-align: left;">caso más alto</td>
+<td style="text-align: right;"><code>org_okep7y6w</code>, compute, 2025-08-07: 191,90 USD contra una mediana de 11,27 (score 106,5)</td>
+</tr>
+</tbody>
+</table>
+<p>El método es relativo a cada serie: un día caro para una organización que siempre gasta mucho no se
+marca. Elegimos un método estadístico y no un modelo de Spark ML porque la mediana y el MAD casi no
+se mueven con la cola larga de los costos (p99 de 16,69 USD por evento contra un máximo de 317,43) y
+cada alerta se explica contra la historia de su propia serie. Un clustering diría a qué grupo se
+parece un día, no por qué es raro para esa organización. La limitación principal son los días con
+menos de 14 días de historia, que quedan sin puntuar. Q6 sirve el mart desde Cassandra.</p>
+<h2 id="7-gobierno-seguridad-y-observabilidad">7. Gobierno, seguridad y observabilidad</h2>
+<p>La matriz de gobierno, con dueño, sensibilidad, acceso, retención, reglas, métricas, linaje y
+monitoreo por activo, está en <code>docs/governance.md</code> y se incluye al final. <code>users.email</code> es el único
+dato personal: Silver lo reemplaza por un hash con sal (D17), y ningún mart ni tabla de Cassandra
+tiene datos personales.</p>
+<p>Seguridad (D19). La Cassandra local exige login. <code>make cassandra-init</code> entra como superusuario,
+cambia la contraseña de fábrica y crea dos roles: <code>cpa_loader</code>, con <code>SELECT</code> y <code>MODIFY</code> sobre el
+keyspace, para la carga, y <code>cpa_reader</code>, con <code>SELECT</code>, para las consultas y cqlsh. Las contraseñas
+las genera <code>make setup</code> en <code>config/pipeline.env</code>, fuera de git, y una prueba de <code>make test</code> falla si
+un archivo del repo contiene un token, una clave privada o un valor de ese archivo. AstraDB
+autentica con el token de la consola y cifra con mTLS por el secure connect bundle.</p>
+<p>Observabilidad (D20). <code>make health</code> lee los resúmenes de corrida y devuelve OK, WARN o ALERT para
+siete controles, con la historia de las últimas 10 corridas, y sale con código 1 ante una ALERT para
+que el scheduler avise. Después de la corrida de la evidencia los siete dan OK
+(<code>evidence/final/health_report.md</code>): 0 filas descartadas por el watermark, 0% en Quarantine, los
+seis marts conciliados y las 6 tablas de Cassandra con las filas de Gold. Contra una carga a AstraDB
+que no pudo conectarse, el mismo control dio ALERT con el error de la etapa.</p>
+<h2 id="8-idempotencia-y-reproducibilidad">8. Idempotencia y reproducibilidad</h2>
+<p><code>make rerun-evidence</code> borra el lake y el keyspace, vuelve a crear los roles, corre el pipeline
+completo dos veces seguidas y guarda los conteos después de cada una (<code>evidence/final/counts_run_1.json</code>
+y <code>counts_run_2.json</code>). Las dos corridas dejan las mismas filas en las 23 tablas del lake y en las 6
+de Cassandra:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tabla</th>
+<th style="text-align: right;">Primera corrida</th>
+<th style="text-align: right;">Re-ejecución</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>bronze/usage_events</code>, <code>silver/usage_events</code></td>
+<td style="text-align: right;">43.200</td>
+<td style="text-align: right;">43.200</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/org_daily_usage_by_service</code>, <code>gold/cost_anomaly_mart</code></td>
+<td style="text-align: right;">11.050</td>
+<td style="text-align: right;">11.050</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/top_services_14d_by_org</code></td>
+<td style="text-align: right;">15.599</td>
+<td style="text-align: right;">15.599</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/tickets_by_org_date</code>, <code>gold/tickets_daily_by_org</code></td>
+<td style="text-align: right;">984 y 944</td>
+<td style="text-align: right;">984 y 944</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/revenue_by_org_month</code>, <code>gold/genai_tokens_by_org_date</code></td>
+<td style="text-align: right;">240 y 1.131</td>
+<td style="text-align: right;">240 y 1.131</td>
+</tr>
+<tr>
+<td style="text-align: left;">las 6 tablas de Cassandra</td>
+<td style="text-align: right;">las filas de su mart</td>
+<td style="text-align: right;">las mismas</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mecanismo</th>
+<th style="text-align: left;">Qué protege</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">registro de ingestados con sha256</td>
+<td style="text-align: left;">Landing a Bronze, batch: la re-ejecución saltea los 7 CSV</td>
+</tr>
+<tr>
+<td style="text-align: left;">checkpoints de las dos queries</td>
+<td style="text-align: left;">Landing a Bronze, streaming: la re-ejecución no lee archivos nuevos</td>
+</tr>
+<tr>
+<td style="text-align: left;">reconstrucción completa y dynamic partition overwrite</td>
+<td style="text-align: left;">Silver, Gold y los marts</td>
+</tr>
+<tr>
+<td style="text-align: left;">upsert por primary key</td>
+<td style="text-align: left;">Cassandra y AstraDB</td>
+</tr>
+</tbody>
+</table>
+<p><code>make test</code> corre 55 pruebas con Spark local y sin Cassandra: además de las de la entrega 2 (carga,
+stream, reglas, Silver, Gold, anomalías, CQL), cubren las ventanas y los rangos del Top-N, los
+tickets críticos y la tasa de SLA, el revenue con monedas mezcladas, los tokens nulos de GenAI, los
+controles que bloquean un mart roto, cada nivel de <code>make health</code> y la ausencia de secretos en el
+repo.</p>
+<p>Validamos el Quickstart en un clon nuevo del repositorio: <code>make setup</code>, <code>make check</code>, las 55
+pruebas y dos <code>make run</code> completos contra la Cassandra con login dejaron los mismos conteos que la
+evidencia, en las 23 tablas del lake y en las 6 de Cassandra, y <code>make health</code> dio OK. El clon usó
+el <code>config/pipeline.env</code> de la copia que había inicializado el contenedor, porque los dos comparten
+el mismo contenedor y sus contraseñas (README, paso 5).</p>
+<h2 id="9-limitaciones-y-proximos-pasos">9. Limitaciones y próximos pasos</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Limitación</th>
+<th style="text-align: left;">Consecuencia</th>
+<th style="text-align: left;">Próximo paso</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">sin speed layer</td>
+<td style="text-align: left;">Gold y Cassandra tienen latencia D+1</td>
+<td style="text-align: left;">la vista intradía con <code>foreachBatch</code> de D3</td>
+</tr>
+<tr>
+<td style="text-align: left;">Silver y Gold se reconstruyen enteros</td>
+<td style="text-align: left;">a la escala proyectada no entra en la ventana de O1</td>
+<td style="text-align: left;">reconstruir solo las fechas de evento que tocó cada corrida</td>
+</tr>
+<tr>
+<td style="text-align: left;">retención definida pero no automatizada</td>
+<td style="text-align: left;">Bronze y Quarantine crecen sin límite</td>
+<td style="text-align: left;">un job que borre particiones vencidas</td>
+</tr>
+<tr>
+<td style="text-align: left;">alertas por código de salida</td>
+<td style="text-align: left;">alguien o el scheduler tiene que correr <code>make health</code></td>
+<td style="text-align: left;">enviar el resultado a un canal del equipo</td>
+</tr>
+<tr>
+<td style="text-align: left;">un token de AstraDB con rol de administrador</td>
+<td style="text-align: left;">las consultas podrían escribir</td>
+<td style="text-align: left;">un token de solo lectura para las consultas</td>
+</tr>
+<tr>
+<td style="text-align: left;">Spark local en una máquina</td>
+<td style="text-align: left;">no mide el comportamiento en un clúster</td>
+<td style="text-align: left;">la traducción a YARN de la ficha de ejecución</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10-requisito-y-evidencia">10. Requisito y evidencia</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Requisito (consigna §7.2, §7.6)</th>
+<th style="text-align: left;">Dónde está</th>
+<th style="text-align: left;">Evidencia</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">pipeline end-to-end, batch y streaming</td>
+<td style="text-align: left;"><code>src/pipeline/</code>, <code>make run</code></td>
+<td style="text-align: left;"><code>run_1_*.log</code>, <code>health_report.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">arquitectura consistente con la implementación</td>
+<td style="text-align: left;">§2, <code>docs/architecture_final.svg</code></td>
+<td style="text-align: left;">este documento</td>
+</tr>
+<tr>
+<td style="text-align: left;">Data Lake en Parquet con particiones, promoción y calidad</td>
+<td style="text-align: left;">§3.2, D4, D5</td>
+<td style="text-align: left;"><code>counts_run_1.json</code>, <code>docs/data_dictionary.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">procesamiento Spark con logs, conteos y resultados</td>
+<td style="text-align: left;">§3, <code>src/pipeline/silver.py</code>, <code>gold.py</code>, <code>marts.py</code></td>
+<td style="text-align: left;"><code>run_1_gold_explain.txt</code>, <code>run_*_*.log</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">serving query-first y las cinco consultas</td>
+<td style="text-align: left;">§5, <code>cql/</code>, D11</td>
+<td style="text-align: left;"><code>serving_q1</code> a <code>serving_q5</code>, por cqlsh, driver y AstraDB</td>
+</tr>
+<tr>
+<td style="text-align: left;">analítica con métricas y limitaciones</td>
+<td style="text-align: left;">§6, D12</td>
+<td style="text-align: left;"><code>serving_q6_*.txt</code>, <code>run_1_*.log</code> (etapa <code>anomalies</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">calidad, quarantine, metadatos y linaje</td>
+<td style="text-align: left;">§4, <code>docs/governance.md</code></td>
+<td style="text-align: left;"><code>counts_fixtures.json</code>, <code>docs/data_dictionary.md</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">seguridad y observabilidad</td>
+<td style="text-align: left;">§7, D19, D20</td>
+<td style="text-align: left;"><code>health_report.md</code>, <code>tests/test_no_secrets.py</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">configuración, errores, idempotencia, pruebas y reinicio</td>
+<td style="text-align: left;">§8, <code>config/pipeline.env.example</code>, <code>Makefile</code></td>
+<td style="text-align: left;"><code>counts_run_*.json</code>, <code>make test</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">repositorio sin credenciales</td>
+<td style="text-align: left;"><code>.gitignore</code>, <code>tests/test_no_secrets.py</code></td>
+<td style="text-align: left;"><code>make test</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Quickstart reproducible</td>
+<td style="text-align: left;"><code>README.md</code></td>
+<td style="text-align: left;">§8</td>
+</tr>
+<tr>
+<td style="text-align: left;">documentación técnica y diccionario</td>
+<td style="text-align: left;">este documento, <code>DECISIONS.md</code>, <code>docs/governance.md</code></td>
+<td style="text-align: left;"><code>docs/data_dictionary.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>Las rutas de la columna de evidencia son de <code>evidence/final/</code> salvo que digan otra cosa. La
+presentación ejecutiva, el video y la defensa se preparan aparte.</p></section><section id="governance"><h1 id="gobierno-del-dato">Gobierno del dato</h1>
+<p>Quién es dueño de cada activo, qué tan sensible es, qué reglas lo protegen, cómo se rastrea, quién lo
+puede leer y cómo se vigila. Los dueños son los roles de <code>docs/design.md</code> §8.4. El esquema de cada
+tabla, con una nota por columna, está en <code>docs/data_dictionary.md</code>, generado desde el lake.</p>
+<h2 id="clasificacion">Clasificación</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Nivel</th>
+<th style="text-align: left;">Qué entra</th>
+<th style="text-align: left;">Ejemplos</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Personal</td>
+<td style="text-align: left;">datos que identifican a una persona</td>
+<td style="text-align: left;"><code>users.email</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">datos comerciales de un cliente</td>
+<td style="text-align: left;">facturación, nombre de la organización, tickets, uso y costo por organización</td>
+</tr>
+<tr>
+<td style="text-align: left;">Interna</td>
+<td style="text-align: left;">agregados y metadatos operativos</td>
+<td style="text-align: left;">logs de corrida, registro de ingestados, checkpoints</td>
+</tr>
+</tbody>
+</table>
+<h2 id="matriz-de-activos">Matriz de activos</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Activo</th>
+<th style="text-align: left;">Dueño</th>
+<th style="text-align: left;">Sensibilidad</th>
+<th style="text-align: left;">Acceso</th>
+<th style="text-align: left;">Retención</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Landing, 7 CSV y 120 JSONL</td>
+<td style="text-align: left;">Ingesta</td>
+<td style="text-align: left;">Personal (<code>users.csv</code>)</td>
+<td style="text-align: left;">solo los jobs de ingesta y la exploración de solo lectura</td>
+<td style="text-align: left;">histórico completo, inmutable (D8)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bronze/usage_events</code></td>
+<td style="text-align: left;">Ingesta</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">jobs de Silver</td>
+<td style="text-align: left;">90 días sobre <code>ingest_date</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bronze/&lt;maestro&gt;</code>, 7 tablas</td>
+<td style="text-align: left;">Ingesta</td>
+<td style="text-align: left;">Personal (<code>users</code>), Confidencial (resto)</td>
+<td style="text-align: left;">jobs de Silver</td>
+<td style="text-align: left;">90 días sobre <code>ingest_date</code> (<code>month</code> en facturación)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>silver/usage_events</code></td>
+<td style="text-align: left;">Calidad y Silver</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">jobs de Gold, notebooks del equipo</td>
+<td style="text-align: left;">histórico completo</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>silver/users</code></td>
+<td style="text-align: left;">Calidad y Silver</td>
+<td style="text-align: left;">Confidencial: sin email, con <code>email_hash</code> y <code>email_domain</code></td>
+<td style="text-align: left;">jobs de Gold</td>
+<td style="text-align: left;">histórico completo</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>silver/billing_monthly</code>, <code>silver/support_tickets</code> y demás maestros</td>
+<td style="text-align: left;">Calidad y Silver</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">jobs de Gold</td>
+<td style="text-align: left;">histórico completo</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/org_daily_usage_by_service</code>, <code>gold/cost_anomaly_mart</code></td>
+<td style="text-align: left;">Marts</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">carga a Cassandra, BI</td>
+<td style="text-align: left;">13 meses sobre <code>usage_date</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/top_services_14d_by_org</code></td>
+<td style="text-align: left;">Marts</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">carga a Cassandra</td>
+<td style="text-align: left;">13 meses sobre <code>as_of_date</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/tickets_by_org_date</code>, <code>gold/tickets_daily_by_org</code></td>
+<td style="text-align: left;">Marts</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">carga a Cassandra (la diaria), BI</td>
+<td style="text-align: left;">13 meses sobre <code>ticket_date</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/revenue_by_org_month</code></td>
+<td style="text-align: left;">Marts</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">carga a Cassandra, FinOps</td>
+<td style="text-align: left;">histórico completo, como <code>silver/billing_monthly</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold/genai_tokens_by_org_date</code></td>
+<td style="text-align: left;">Marts</td>
+<td style="text-align: left;">Confidencial</td>
+<td style="text-align: left;">carga a Cassandra, Producto</td>
+<td style="text-align: left;">13 meses sobre <code>usage_date</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>quarantine/*</code>, 4 tablas</td>
+<td style="text-align: left;">Calidad y Silver</td>
+<td style="text-align: left;">la del origen: <code>raw_record</code> puede traer un email</td>
+<td style="text-align: left;">ingenieros del equipo, como cola de revisión</td>
+<td style="text-align: left;">180 días las de append; las de reglas se reconstruyen</td>
+</tr>
+<tr>
+<td style="text-align: left;">Cassandra <code>cloud_analytics</code>, 6 tablas</td>
+<td style="text-align: left;">Serving</td>
+<td style="text-align: left;">Confidencial, sin datos personales</td>
+<td style="text-align: left;"><code>cpa_loader</code> escribe, <code>cpa_reader</code> lee (D19)</td>
+<td style="text-align: left;">la del mart de Gold</td>
+</tr>
+<tr>
+<td style="text-align: left;">AstraDB <code>cpa</code>, 6 tablas</td>
+<td style="text-align: left;">Serving</td>
+<td style="text-align: left;">Confidencial, sin datos personales</td>
+<td style="text-align: left;">por token de la consola</td>
+<td style="text-align: left;">la del mart de Gold</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>_registry</code>, <code>_checkpoints</code>, <code>logs/</code></td>
+<td style="text-align: left;">Ingesta</td>
+<td style="text-align: left;">Interna</td>
+<td style="text-align: left;">ingenieros del equipo</td>
+<td style="text-align: left;">lo que dure la query; logs 90 días</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Activo</th>
+<th style="text-align: left;">Reglas de calidad</th>
+<th style="text-align: left;">Métricas</th>
+<th style="text-align: left;">Linaje</th>
+<th style="text-align: left;">Monitoreo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Landing</td>
+<td style="text-align: left;">ninguna, se observa (design §5)</td>
+<td style="text-align: left;">archivos y filas por fuente</td>
+<td style="text-align: left;">nombre de archivo</td>
+<td style="text-align: left;"><code>make check</code> falla si falta una fuente e informa archivos ajenos</td>
+</tr>
+<tr>
+<td style="text-align: left;">Bronze</td>
+<td style="text-align: left;">parsea con el esquema declarado, encabezado CSV igual al esquema</td>
+<td style="text-align: left;">filas, filas a Quarantine, claves repetidas, progreso por micro-batch</td>
+<td style="text-align: left;"><code>source_file</code>, <code>ingest_ts</code>, <code>ingest_date</code>, sha256 en el registro</td>
+<td style="text-align: left;"><code>make health</code>: filas descartadas por el watermark</td>
+</tr>
+<tr>
+<td style="text-align: left;">Silver</td>
+<td style="text-align: left;">D6 y D7: 8 reglas de rechazo de eventos, 1 de tickets, 8 flags de reparación</td>
+<td style="text-align: left;">O3 en filas y en costo, <code>unit</code> con <code>value</code> al 100%</td>
+<td style="text-align: left;">lo de Bronze, más <code>processed_ts</code> y <code>run_id</code></td>
+<td style="text-align: left;"><code>make health</code>: O3 y crecimiento de Quarantine</td>
+</tr>
+<tr>
+<td style="text-align: left;">Gold, mart diario</td>
+<td style="text-align: left;">claves no nulas, filas igual al grano, costo a 0,01 USD de Silver por organización y día</td>
+<td style="text-align: left;">resultado de la conciliación</td>
+<td style="text-align: left;"><code>run_id</code>, <code>computed_ts</code>, <code>events</code> por fila</td>
+<td style="text-align: left;">la corrida no publica si no concilia; <code>make health</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Gold, marts de Q2 a Q5</td>
+<td style="text-align: left;">claves no nulas, una fila por clave, totales iguales a su fuente (D18)</td>
+<td style="text-align: left;">resultado de cada control</td>
+<td style="text-align: left;"><code>run_id</code>, <code>computed_ts</code></td>
+<td style="text-align: left;">la corrida no publica si no concilia; <code>make health</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Quarantine</td>
+<td style="text-align: left;">es el control</td>
+<td style="text-align: left;">filas por regla y por tabla</td>
+<td style="text-align: left;"><code>raw_record</code>, <code>source_file</code>, <code>rule_name</code>, <code>run_id</code></td>
+<td style="text-align: left;"><code>make health</code>: O3 y crecimiento</td>
+</tr>
+<tr>
+<td style="text-align: left;">Cassandra y AstraDB</td>
+<td style="text-align: left;">filas escritas iguales a Gold, por tabla</td>
+<td style="text-align: left;">filas por tabla</td>
+<td style="text-align: left;"><code>run_id</code>, <code>computed_ts</code></td>
+<td style="text-align: left;">la carga falla si no coincide; <code>make health</code></td>
+</tr>
+</tbody>
+</table>
+<p>La evidencia de cada fila está en <code>evidence/final/README.md</code>.</p>
+<h2 id="linaje-por-consulta">Linaje por consulta</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Consulta</th>
+<th style="text-align: left;">Tabla de Cassandra</th>
+<th style="text-align: left;">Mart de Gold</th>
+<th style="text-align: left;">Silver</th>
+<th style="text-align: left;">Landing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Q1</td>
+<td style="text-align: left;"><code>org_daily_usage_by_service</code></td>
+<td style="text-align: left;"><code>org_daily_usage_by_service</code></td>
+<td style="text-align: left;"><code>usage_events</code> + <code>customers_orgs</code> + <code>resources</code></td>
+<td style="text-align: left;"><code>usage_events_stream/*.jsonl</code> y dos CSV</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q2</td>
+<td style="text-align: left;"><code>top_services_14d_by_org</code></td>
+<td style="text-align: left;"><code>top_services_14d_by_org</code>, desde el mart diario</td>
+<td style="text-align: left;">igual que Q1</td>
+<td style="text-align: left;">igual que Q1</td>
+</tr>
+<tr>
+<td style="text-align: left;">Q3</td>
+<td style="text-align: left;"><code>tickets_daily_by_org</code></td>
+<td style="text-align: left;"><code>tickets_daily_by_org</code></td>
+<td style="text-align: left;"><code>support_tickets</code></td>
+<td style="text-align: left;"><code>support_tickets.csv</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Q4</td>
+<td style="text-align: left;"><code>revenue_by_org_month</code></td>
+<td style="text-align: left;"><code>revenue_by_org_month</code></td>
+<td style="text-align: left;"><code>billing_monthly</code></td>
+<td style="text-align: left;"><code>billing_monthly.csv</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Q5</td>
+<td style="text-align: left;"><code>genai_tokens_by_org_date</code></td>
+<td style="text-align: left;"><code>genai_tokens_by_org_date</code></td>
+<td style="text-align: left;"><code>usage_events</code> (servicio genai)</td>
+<td style="text-align: left;"><code>usage_events_stream/*.jsonl</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Q6</td>
+<td style="text-align: left;"><code>cost_anomalies_by_org</code></td>
+<td style="text-align: left;"><code>cost_anomaly_mart</code>, desde el mart diario</td>
+<td style="text-align: left;">igual que Q1</td>
+<td style="text-align: left;">igual que Q1</td>
+</tr>
+</tbody>
+</table>
+<p>Un número servido se rastrea hasta su archivo de origen con las columnas técnicas:</p>
+<ol>
+<li>La fila de Cassandra trae <code>run_id</code> y <code>computed_ts</code>. Con el <code>run_id</code> se abre <code>logs/&lt;run_id&gt;.json</code>,
+   que tiene la configuración y las métricas de cada etapa, incluidos los controles de cada mart.</li>
+<li>La misma clave en el mart de Gold dice sobre cuántas filas de Silver se apoya (<code>events</code>,
+   <code>tickets</code>, <code>invoices</code>).</li>
+<li>En Silver, filtrando por esa clave, aparecen las filas con su <code>source_file</code> e <code>ingest_ts</code>.</li>
+<li>El registro de ingestados y el checkpoint del stream dicen cuándo entró cada archivo de Landing, y
+   el sha256 del registro prueba que el CSV no cambió desde entonces.</li>
+</ol>
+<h2 id="datos-personales">Datos personales</h2>
+<p><code>users.email</code> es el único dato personal del dataset. Hasta Bronze se guarda tal cual, porque Bronze
+es la copia fiel de la fuente. Silver lo reemplaza por <code>email_hash</code>, un sha256 de una sal más el
+email normalizado, y <code>email_domain</code> (D17). La sal (<code>PII_HASH_SALT</code>) la genera <code>make setup</code> en
+<code>config/pipeline.env</code>, que no se commitea. Sin sal la corrida se detiene en <code>make check</code> y en
+Silver, antes de escribir <code>users</code>. Ningún mart ni tabla de Cassandra tiene datos personales.</p>
+<h2 id="acceso-y-credenciales">Acceso y credenciales</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Dónde</th>
+<th style="text-align: left;">Quién</th>
+<th style="text-align: left;">Cómo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Cassandra local</td>
+<td style="text-align: left;"><code>cpa_loader</code>: <code>SELECT</code> y <code>MODIFY</code>; <code>cpa_reader</code>: <code>SELECT</code>; el superusuario solo en <code>make cassandra-init</code></td>
+<td style="text-align: left;"><code>PasswordAuthenticator</code> y <code>CassandraAuthorizer</code> (D19)</td>
+</tr>
+<tr>
+<td style="text-align: left;">AstraDB</td>
+<td style="text-align: left;">el token de la consola</td>
+<td style="text-align: left;">mTLS por el secure connect bundle</td>
+</tr>
+<tr>
+<td style="text-align: left;">Lake y logs</td>
+<td style="text-align: left;">un usuario en la máquina local, separación por carpeta y por escritor (D15)</td>
+<td style="text-align: left;">permisos del sistema de archivos</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Nada secreto vive en git. <code>config/pipeline.env</code>, <code>.env</code>, <code>*.pem</code> y los bundles <code>secure-connect-*.zip</code>
+  están en <code>.gitignore</code>, y una prueba de <code>make test</code> falla si un archivo trackeado contiene un token,
+  una clave privada o un valor de <code>config/pipeline.env</code>.</li>
+<li>Las contraseñas de Cassandra, la sal y el token de AstraDB se leen solo de variables de entorno.
+  El log de cada corrida muestra la configuración con los secretos reemplazados por <code>&lt;set&gt;</code> o <code>&lt;unset&gt;</code>.</li>
+<li>La evidencia copiada de los logs reemplaza la ruta local del repo por <code>&lt;repo&gt;</code> y el host de AstraDB
+  por <code>&lt;astra-host&gt;</code>.</li>
+</ul>
+<h2 id="monitoreo">Monitoreo</h2>
+<p><code>make health</code> lee los resúmenes de corrida y devuelve OK, WARN o ALERT por control, con la historia
+de las últimas 10 corridas; sale con código 1 si hay una ALERT (D20). Los controles cubren etapas
+fallidas, frescura de Gold, filas descartadas por el watermark, O3, conciliación de Gold y de los
+marts, filas de serving contra Gold y crecimiento de Quarantine.</p>
+<h2 id="lo-que-queda-fuera-del-mvp">Lo que queda fuera del MVP</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Control</th>
+<th style="text-align: left;">Hoy</th>
+<th style="text-align: left;">En producción</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Acceso al lake</td>
+<td style="text-align: left;">un usuario local, separación por carpeta</td>
+<td style="text-align: left;">un rol por job con permisos por prefijo en el object storage</td>
+</tr>
+<tr>
+<td style="text-align: left;">AstraDB</td>
+<td style="text-align: left;">un token con rol Database Administrator</td>
+<td style="text-align: left;">un token de solo lectura para las consultas</td>
+</tr>
+<tr>
+<td style="text-align: left;">Retención</td>
+<td style="text-align: left;">definida por activo, no automatizada</td>
+<td style="text-align: left;">un job que borre particiones vencidas de Bronze y Quarantine</td>
+</tr>
+<tr>
+<td style="text-align: left;">Alertas</td>
+<td style="text-align: left;"><code>make health</code> con código de salida</td>
+<td style="text-align: left;">el mismo control enviado a un canal del equipo desde el scheduler</td>
+</tr>
+<tr>
+<td style="text-align: left;">Catálogo</td>
+<td style="text-align: left;"><code>docs/data_dictionary.md</code> generado desde el lake</td>
+<td style="text-align: left;">catálogo con versionado de esquemas</td>
+</tr>
+</tbody>
+</table></section><section id="execution"><h1 id="ficha-de-ejecucion">Ficha de ejecución</h1>
+<p>Cómo corre el pipeline hoy, medido en la corrida de la evidencia.</p>
+<h2 id="hoy-un-proceso-local">Hoy: un proceso local</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Recurso</th>
+<th style="text-align: left;">Valor</th>
+<th style="text-align: left;">Por qué</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Master</td>
+<td style="text-align: left;"><code>local[4]</code></td>
+<td style="text-align: left;">un JVM con driver y executor juntos y 4 slots de tarea</td>
+</tr>
+<tr>
+<td style="text-align: left;">Memoria</td>
+<td style="text-align: left;"><code>spark.driver.memory=2g</code></td>
+<td style="text-align: left;">el dataset completo son 13 MB de JSON y 7 MB de Parquet</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>spark.sql.shuffle.partitions</code></td>
+<td style="text-align: left;">8</td>
+<td style="text-align: left;">con 200 (el valor por defecto) cada agregación lanza 200 tareas casi vacías. 8 son dos rondas de 4 slots, y AQE junta las que quedan chicas</td>
+</tr>
+<tr>
+<td style="text-align: left;">AQE</td>
+<td style="text-align: left;">activado</td>
+<td style="text-align: left;">coalesce de particiones de shuffle después de medir el tamaño real</td>
+</tr>
+<tr>
+<td style="text-align: left;">Archivos por partición</td>
+<td style="text-align: left;">1 (<code>FILES_PER_PARTITION</code>)</td>
+<td style="text-align: left;">un archivo de 10 a 150 KB por día o por micro-batch (design §5.1)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Java</td>
+<td style="text-align: left;">JDK 21 (<code>PIPELINE_JAVA_HOME</code>)</td>
+<td style="text-align: left;">Spark 4.2 corre sobre 17, 21 y 25; el pipeline acepta los tres, y la evidencia se generó con 21</td>
+</tr>
+</tbody>
+</table>
+<h2 id="tiempos-de-la-corrida-de-la-evidencia">Tiempos de la corrida de la evidencia</h2>
+<p>Las dos corridas de <code>make rerun-evidence</code> (<code>evidence/final/run_1_*.log</code> y <code>run_2_*.log</code>): la primera
+sobre un lake vacío, la segunda sin nada nuevo que ingerir. Segundos por etapa, del resumen de cada
+corrida.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Etapa</th>
+<th style="text-align: left;">Qué hace</th>
+<th style="text-align: left;">Trigger</th>
+<th style="text-align: right;">Primera</th>
+<th style="text-align: right;">Re-ejecución</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>bronze-batch</code></td>
+<td style="text-align: left;">7 CSV a Bronze, registro de ingestados</td>
+<td style="text-align: left;">por corrida</td>
+<td style="text-align: right;">12,4</td>
+<td style="text-align: right;">2,4</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bronze-stream</code></td>
+<td style="text-align: left;">120 JSONL a Bronze y Quarantine, 2 queries</td>
+<td style="text-align: left;"><code>availableNow</code>, 10 archivos por micro-batch</td>
+<td style="text-align: right;">8,4</td>
+<td style="text-align: right;">1,1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>silver</code></td>
+<td style="text-align: left;">7 maestros y eventos conformados, reglas, joins, dedupe</td>
+<td style="text-align: left;">por corrida</td>
+<td style="text-align: right;">10,0</td>
+<td style="text-align: right;">13,1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gold</code></td>
+<td style="text-align: left;"><code>org_daily_usage_by_service</code>, conciliación</td>
+<td style="text-align: left;">por corrida</td>
+<td style="text-align: right;">2,3</td>
+<td style="text-align: right;">2,7</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>anomalies</code></td>
+<td style="text-align: left;"><code>cost_anomaly_mart</code></td>
+<td style="text-align: left;">por corrida</td>
+<td style="text-align: right;">3,2</td>
+<td style="text-align: right;">3,1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>marts</code></td>
+<td style="text-align: left;">los 5 marts de Q2 a Q5, con sus controles</td>
+<td style="text-align: left;">por corrida</td>
+<td style="text-align: right;">5,7</td>
+<td style="text-align: right;">7,0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>serving</code></td>
+<td style="text-align: left;">upsert de las 6 tablas en Cassandra y verificación</td>
+<td style="text-align: left;">por corrida</td>
+<td style="text-align: right;">5,4</td>
+<td style="text-align: right;">6,4</td>
+</tr>
+<tr>
+<td style="text-align: left;">total</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"></td>
+<td style="text-align: right;">47,3</td>
+<td style="text-align: right;">35,9</td>
+</tr>
+</tbody>
+</table>
+<p>En la re-ejecución el stream no lee nada y la carga batch saltea los 7 CSV registrados; Silver, Gold,
+los marts y la carga se rehacen enteros en las dos (D8). Los tiempos varían entre corridas y con la
+carga de la máquina. La cantidad de jobs, tareas y shuffle por etapa la medimos con el event log en
+la entrega 2 (<code>docs/entrega-2.pdf</code>, ficha de ejecución): Silver es la etapa que más mueve, unos 6 MB
+de shuffle.</p>
+<p>El shuffle más grande es el de Silver: el dedupe por <code>event_id</code> es una ventana particionada por
+<code>event_id</code> y mueve todos los eventos. La agregación de Gold mueve menos porque agrega parcial antes
+del exchange, que es el combiner del §7 del diseño (nodos 2 a 4 de <code>evidence/final/run_1_gold_explain.txt</code>).</p></section><section id="decisions"><h1 id="decisiones">Decisiones</h1>
+<p>Decisiones de diseño, con las alternativas que miramos y lo que cuesta cada una. D1 a D10 vienen de
+la entrega 1. D11 y D12 quedaron abiertas en la entrega 1 y se cierran con los datos de Gold. D13 a
+D17 son las que trajo la implementación. D18 a D20 son del MVP final. Fecha: 2026-11-21.</p>
+<p>Las mediciones salen de <a href="evidence/landing_profile.md"><code>evidence/landing_profile.md</code></a>. Documento de
+diseño: <a href="docs/design.md"><code>docs/design.md</code></a>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">#</th>
+<th style="text-align: left;">Decisión</th>
+<th style="text-align: left;">Estado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">D1</td>
+<td style="text-align: left;">Un único esquema explícito que cubre las dos versiones de evento</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D2</td>
+<td style="text-align: left;">Leer <code>value</code> como string en Bronze y castear en Silver con <code>try_cast</code></td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D3</td>
+<td style="text-align: left;">Híbrido estilo Lambda, con un speed layer sin ventanas</td>
+<td style="text-align: left;">Aceptada. Entrega 2: batch layer más ingesta streaming a Bronze; speed layer diferido, latencia de Gold D+1</td>
+</tr>
+<tr>
+<td style="text-align: left;">D4</td>
+<td style="text-align: left;">Cinco zonas, Parquet con Snappy</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D5</td>
+<td style="text-align: left;">Una sola columna de fecha, <code>ingest_date</code> en Bronze y <code>event_date</code> en Silver</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D6</td>
+<td style="text-align: left;">Política de calidad: primero imputar</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D7</td>
+<td style="text-align: left;">Acción por fuente, y dos supuestos de escala</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D8</td>
+<td style="text-align: left;">Landing inmutable, idempotencia por sobreescritura y upsert</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D9</td>
+<td style="text-align: left;">Convertir moneda por factura, y forzar USD a 1,0</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D10</td>
+<td style="text-align: left;">Las muestras de quarantine salen de fixtures en la entrega 2</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D11</td>
+<td style="text-align: left;">Modelo query-first en Cassandra: una tabla por consulta, una partición por organización</td>
+<td style="text-align: left;">Aceptada. Final: Q2 precalculada como Top-N; Q3, Q4 y Q5 por organización</td>
+</tr>
+<tr>
+<td style="text-align: left;">D12</td>
+<td style="text-align: left;">Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D13</td>
+<td style="text-align: left;">Carga batch: registro de ingestados, y el dedupe por clave va en Silver</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D14</td>
+<td style="text-align: left;">Streaming: <code>availableNow</code> para corridas y demo, una query y un checkpoint por destino</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D15</td>
+<td style="text-align: left;">Quarantine en cuatro tablas, una por escritor</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D16</td>
+<td style="text-align: left;">Carga a Cassandra con el driver de Python desde <code>foreachPartition</code>, local y AstraDB</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D17</td>
+<td style="text-align: left;"><code>users.email</code> se reemplaza en Silver por un hash con sal y el dominio</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D18</td>
+<td style="text-align: left;">Marts de Soporte, revenue y GenAI: qué fecha y qué costo cuentan</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D19</td>
+<td style="text-align: left;">Cassandra local con login y dos roles de permisos mínimos</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+<tr>
+<td style="text-align: left;">D20</td>
+<td style="text-align: left;">Observabilidad: <code>make health</code> sobre el resumen de cada corrida</td>
+<td style="text-align: left;">Aceptada</td>
+</tr>
+</tbody>
+</table>
+<p>Cada registro, con su contexto, las alternativas que miramos y las consecuencias, está
+en <code>DECISIONS.md</code> en el repositorio.</p></section>
