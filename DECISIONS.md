@@ -2,7 +2,7 @@
 
 Decisiones de diseño, con las alternativas que miramos y lo que cuesta cada una. D1 a D10 vienen de
 la entrega 1. D11 y D12 quedaron abiertas en la entrega 1 y se cierran con los datos de Gold. D13 a
-D17 son las que trajo la implementación. Fecha: 2026-11-08.
+D17 son las que trajo la implementación. D18 a D20 son del MVP final. Fecha: 2026-11-21.
 
 Las mediciones salen de [`evidence/landing_profile.md`](evidence/landing_profile.md). Documento de
 diseño: [`docs/design.md`](docs/design.md).
@@ -19,13 +19,16 @@ diseño: [`docs/design.md`](docs/design.md).
 | D8 | Landing inmutable, idempotencia por sobreescritura y upsert | Aceptada |
 | D9 | Convertir moneda por factura, y forzar USD a 1,0 | Aceptada |
 | D10 | Las muestras de quarantine salen de fixtures en la entrega 2 | Aceptada |
-| D11 | Modelo query-first en Cassandra: una partición por organización, días como clustering | Aceptada |
+| D11 | Modelo query-first en Cassandra: una tabla por consulta, una partición por organización | Aceptada. Final: Q2 precalculada como Top-N; Q3, Q4 y Q5 por organización |
 | D12 | Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5 | Aceptada |
 | D13 | Carga batch: registro de ingestados, y el dedupe por clave va en Silver | Aceptada |
 | D14 | Streaming: `availableNow` para corridas y demo, una query y un checkpoint por destino | Aceptada |
 | D15 | Quarantine en cuatro tablas, una por escritor | Aceptada |
 | D16 | Carga a Cassandra con el driver de Python desde `foreachPartition`, local y AstraDB | Aceptada |
 | D17 | `users.email` se reemplaza en Silver por un hash con sal y el dominio | Aceptada |
+| D18 | Marts de Soporte, revenue y GenAI: qué fecha y qué costo cuentan | Aceptada |
+| D19 | Cassandra local con login y dos roles de permisos mínimos | Aceptada |
+| D20 | Observabilidad: `make health` sobre el resumen de cada corrida | Aceptada |
 
 ## D1. Un único esquema explícito que cubre las dos versiones de evento
 
@@ -279,32 +282,48 @@ propio en `datalake/_fixtures/`. No entran nunca a `data/landing/` ni se cuentan
 un mart. La regla más difícil de ejercitar sin ellos es la del `value` que no
 castea, que además es la que depende de `try_cast` en lugar de `cast`: ver D2.
 
-## D11. Modelo query-first en Cassandra: una partición por organización, días como clustering
+## D11. Modelo query-first en Cassandra: una tabla por consulta, una partición por organización
 
-Contexto. Q1 pide costo y requests diarios por servicio de una organización en un rango de fechas.
-Q2 pide el top-N de servicios por costo de una organización en los últimos 14 días. Los conteos
-reales de Gold: 11.050 filas en 80 organizaciones, entre 33 y 286 filas por organización en 60
-días, y como mucho 6 filas por organización y día, una por servicio.
+Contexto. Las seis consultas de serving piden datos de una organización: Q1 costo y requests diarios
+por servicio en un rango, Q2 el top-N de servicios por costo de los últimos 14 días, Q3 tickets
+críticos y tasa de SLA breach por día en 30 días, Q4 revenue mensual en USD, Q5 tokens GenAI y costo
+por día, y Q6 los días anómalos. La consigna no dice si Q3 a Q5 son por organización o globales, y
+el diseño (§8.1) las supuso por organización, como Q1 y Q2.
 
-Decisión.
+Decisión. Cada consulta tiene una tabla que guarda exactamente las filas que devuelve, calculadas en
+Gold. Cassandra lee un tramo contiguo de una sola partición y el cliente no suma ni ordena.
 
 | Consulta | Tabla | Partition key | Clustering columns | Lectura |
 | :--- | :--- | :--- | :--- | :--- |
-| Q1 | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service ASC` | un rango de `usage_date` dentro de una partición |
-| Q2 | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service ASC` | los últimos 14 días de una partición (84 filas como máximo), suma y orden en el cliente |
-| Q6 | `cost_anomalies_by_org` | `org_id` | `usage_date DESC`, `service ASC` | un rango de días de una partición, el cliente se queda con `is_anomaly` |
+| Q1 | `org_daily_usage_by_service` | `org_id` | `usage_date DESC`, `service ASC` | un rango de `usage_date` |
+| Q2 | `top_services_14d_by_org` | `org_id` | `as_of_date DESC`, `rank ASC` | una `as_of_date` con `LIMIT N` |
+| Q3 | `tickets_daily_by_org` | `org_id` | `ticket_date DESC` | un rango de 30 días |
+| Q4 | `revenue_by_org_month` | `org_id` | `month DESC` | la partición entera, o un rango de meses |
+| Q5 | `genai_tokens_by_org_date` | `org_id` | `usage_date DESC` | un rango de días |
+| Q6 | `cost_anomalies_by_org` | `org_id` | `usage_date DESC`, `service ASC` | un rango de días; el cliente se queda con `is_anomaly` |
 
-Ninguna consulta usa índices secundarios ni `ALLOW FILTERING`, y cada una toca una sola partición.
-Q2 suma en el cliente porque CQL solo agrupa por un prefijo de la primary key y no ordena por una
-columna regular. Sobre 84 filas eso no cuesta nada. `cost_anomaly_mart` va a su propia tabla, con
-todos los días puntuados y no solo los marcados: si cambia el corte, la recarga sobrescribe las
-mismas claves y no quedan filas viejas.
+Q2 se precalcula en Gold para cada fecha de corte: el costo de cada servicio en los 14 días que
+terminan ese día, ya rankeado. Leer el top 3 es pedir esa fecha con `LIMIT 3`, y el resultado viene
+en orden de `rank` porque es la clustering column. Las primeras 13 fechas de corte tienen menos de
+14 días de datos detrás, y lo dicen con `window_complete`. Q3, Q4 y Q5 quedan por organización, que
+es el supuesto del diseño y el que menos cambia el modelo: la misma partition key que Q1. Ninguna
+consulta usa índices secundarios ni `ALLOW FILTERING`.
 
-Tamaño de partición. La partición crece con los días y no con el tamaño de la organización, porque
-el grano tope es 6 servicios por día: 2.190 filas por año en el peor caso, unas 300 KB con filas
-de unos 150 bytes, lejos de los 100 MB que se usan como límite práctico. Diez años serían unas
-22.000 filas. No hace falta un bucket por mes, y agregarlo obligaría a Q1 y Q2 a leer una o dos
-particiones según dónde caiga el rango.
+Tamaño de partición, medido en Gold sobre 80 organizaciones y 60 días:
+
+| Tabla | Filas | Filas por organización | Por año, peor caso |
+| :--- | ---: | :--- | ---: |
+| `org_daily_usage_by_service` | 11.050 | 33 a 286 | 2.190 (6 servicios por día) |
+| `top_services_14d_by_org` | 15.599 | 60 a 360 | 2.190 (6 rangos por fecha de corte) |
+| `tickets_daily_by_org` | 944 | 4 a 22 | 365 |
+| `revenue_by_org_month` | 240 | 3 | 12 |
+| `genai_tokens_by_org_date` | 1.131 | 30 a 58 (27 organizaciones) | 365 |
+| `cost_anomalies_by_org` | 11.050 | 33 a 286 | 2.190 |
+
+La partición crece con los días y no con el tamaño de la organización, porque el grano tope es de
+6 filas por día. 2.190 filas por año son unas 300 KB con filas de unos 150 bytes, lejos de los
+100 MB que se usan como límite práctico, y diez años son unas 22.000 filas. No hace falta un bucket
+por mes, y agregarlo haría que un rango leyera una o dos particiones según dónde cae.
 
 Replicación y consistencia. Local, un nodo en el datacenter `dc1` con `NetworkTopologyStrategy` y
 factor 1 (`cql/00_keyspace.cql`). En producción sería `{'dc1': 3}` y `LOCAL_QUORUM` para leer y
@@ -313,13 +332,16 @@ sistema tolera la caída de un nodo. El pipeline escribe con `LOCAL_QUORUM` (con
 `CASSANDRA_CONSISTENCY`), que con un nodo es una réplica. En AstraDB la replicación la fija el
 servicio y las escrituras tienen que ser `LOCAL_QUORUM`.
 
-Alternativas. Una tabla con `service` antes que `usage_date` en el clustering permitiría agrupar
-Q2 por servicio en el servidor, pero el rango de fechas de Q1 dejaría de ser contiguo y habría que
-mantener dos copias del mart. Particionar por `(org_id, mes)` acota algo que ya está acotado.
-Particionar por fecha concentraría todas las escrituras del batch diario en una partición caliente.
+Alternativas. Servir Q2 desde la tabla de Q1, leyendo 14 días (84 filas como máximo) y sumando y
+ordenando en el cliente, funciona mientras la partición es chica, pero deja la agregación en cada
+lectura y no escala si el rango o el N crecen. Precalcular solo el top 3 ahorraría filas, pero
+cambiar el N obligaría a recalcular; guardar todos los servicios (6 como máximo) deja el N en el
+`LIMIT`. Para Q3, servir la tabla de grano (organización, día, severidad) obligaría al cliente a
+sumar las severidades de cada día. Q3 a Q5 globales necesitarían tablas particionadas por fecha,
+con una partición caliente por día. Particionar por `(org_id, mes)` acota algo que ya está acotado.
 
-Consecuencias. Q3, Q4 y Q5 siguen supuestas por organización, como dice §8.1 del diseño. Si alguna
-resulta global, va a necesitar su propia tabla particionada por fecha. 80 organizaciones son 80
+Consecuencias. Hay más tablas que marts de la consigna, y cada una se carga y se verifica por
+separado (D16). Q2 guarda 15.599 filas más en Cassandra a cambio de leer 3 por consulta. Si una consulta resulta global, va a necesitar su propia tabla. 80 organizaciones son 80
 particiones repartidas por hash, así que la carga queda pareja entre nodos.
 
 ## D12. Anomalías de costo: z-score modificado con MAD sobre una ventana de 28 días, corte 3,5
@@ -549,3 +571,98 @@ Consecuencias. El hash es estable mientras no cambie la sal: cambiarla cambia to
 `email_hash` de Silver en la siguiente reconstrucción, que es completa (D8), así que no quedan
 mezclados. Quarantine puede traer el email en `raw_record` si una fila de `users` no parsea, y por
 eso tiene el mismo acceso restringido que Bronze (`docs/governance.md`).
+
+## D18. Marts de Soporte, revenue y GenAI: qué fecha y qué costo cuentan
+
+Contexto. Q3, Q4 y Q5 se apoyan en tres marts de la consigna (§7.3): `tickets_by_org_date`,
+`revenue_by_org_month` y `genai_tokens_by_org_date`. Cada uno necesita una definición que la
+consigna no fija: qué fecha tiene un ticket, qué es el "costo estimado" de GenAI, y cómo se resume
+el tipo de cambio de un mes.
+
+Decisión.
+
+| Mart | Grano | Definición |
+| :--- | :--- | :--- |
+| `tickets_by_org_date` | `org_id`, `ticket_date`, `severity` | `ticket_date` es `created_at`, la única fecha que tienen todos los tickets (240 siguen abiertos). La tasa de SLA breach divide por los tickets con `sla_breached` conocido. `csat_avg` promedia solo respuestas válidas (D7) y queda null si no hay |
+| `tickets_daily_by_org` | `org_id`, `ticket_date` | el mismo cálculo sin la severidad, más `critical_tickets` y `critical_sla_breached`: es la forma de Q3 |
+| `revenue_by_org_month` | `org_id`, `month` | suma de las facturas ya convertidas una por una en Silver (D9). `currency` y `exchange_rate_applied` se completan si el mes tiene un solo valor; si no, `MIXED` y null |
+| `genai_tokens_by_org_date` | `org_id`, `usage_date` | días con uso del servicio genai. `genai_cost_usd` es el costo de todos sus eventos; `token_cost_usd` el de los que traen tokens, y `usd_per_1k_tokens` sale de ese |
+
+Solo los eventos GenAI de la versión 2 traen `genai_tokens`. Un día con eventos GenAI v1 tiene
+costo y tokens null, nunca 0: pasa en 283 de las 1.131 filas. Cada mart se concilia antes de
+escribirse: claves no nulas, una fila por clave, los tickets suman los 1.000 de Silver, el revenue
+coincide con Silver con 0,01 USD por organización y mes, y el mart de GenAI coincide fila por fila
+con las filas genai de `org_daily_usage_by_service`, que se calculan por otro camino.
+
+Alternativas. Fechar el ticket por `resolved_at` dejaría afuera los abiertos, y Q3 habla de la
+evolución de los tickets, no de las resoluciones. Estimar el costo de GenAI con una tarifa por token
+inventaría un precio que el dataset no trae; el costo medido de los eventos es el dato real. Un
+promedio ponderado del tipo de cambio de un mes mezclaría monedas en una sola cifra que no
+corresponde a ninguna factura.
+
+Consecuencias. Un día sin tickets no tiene fila: Q3 devuelve solo los días con tickets, y un día
+que falta se lee como cero tickets. Los marts chicos se escriben sin particionar, un archivo por
+tabla, porque particionarlos por fecha daría cientos de archivos de pocas filas (§5.1 del diseño).
+`revenue_by_org_month` particiona por `month` y `top_services_14d_by_org` por `as_of_date`.
+
+## D19. Cassandra local con login y dos roles de permisos mínimos
+
+Contexto. La consigna pide seguridad en el final (§7.2.7, §9.3). Hasta la entrega 2 el contenedor
+aceptaba conexiones sin usuario.
+
+Decisión. El contenedor arranca con `PasswordAuthenticator` y `CassandraAuthorizer`.
+`make cassandra-init` entra como superusuario, cambia la contraseña de fábrica por
+`CASSANDRA_ADMIN_PASSWORD`, crea el keyspace y las tablas, y crea dos roles:
+
+| Rol | Permisos sobre el keyspace | Lo usa |
+| :--- | :--- | :--- |
+| `cpa_loader` | `SELECT`, `MODIFY` | la carga (`make serve`), que además cuenta lo que escribió |
+| `cpa_reader` | `SELECT` | las consultas, cqlsh y los conteos de evidencia |
+
+El rol de carga no puede crear ni borrar tablas. Por eso la carga solo crea lo que falta, y el
+esquema lo maneja `make cassandra-init`. Las contraseñas las genera `make setup` al azar en
+`config/pipeline.env`, fuera de git. Una prueba de `make test` recorre todos los archivos del repo y
+falla si encuentra un token, una clave privada, una asignación con valor de las variables secretas,
+o cualquier valor de `config/pipeline.env`.
+
+En AstraDB la autenticación es el token, y sus permisos dependen del rol con el que se creó en la
+consola. Usamos un token con rol Database Administrator, que la carga necesita para crear tablas.
+
+Alternativas. Dejar el contenedor abierto en `127.0.0.1` es razonable en una laptop, pero no muestra
+cómo se separan los permisos. Un solo usuario para cargar y consultar deja que cualquier consulta
+pueda borrar datos. Montar un `cassandra.yaml` propio en el compose ataría el repo a una versión del
+archivo; editar dos claves al arrancar sobrevive a cambios menores de la imagen.
+
+Consecuencias. Hay un paso más en el Quickstart (`make cassandra-init`). cqlsh recibe la contraseña
+por argumento dentro del contenedor, visible en la lista de procesos de la máquina local. No hay TLS
+entre el pipeline y el contenedor local; AstraDB sí lo usa (mTLS por el bundle). Para producción
+quedan como mejoras un token de AstraDB de solo lectura para las consultas y TLS en el cluster.
+
+## D20. Observabilidad: `make health` sobre el resumen de cada corrida
+
+Contexto. La consigna pide observabilidad en el final (§7.2.7, §9.3). Cada corrida ya deja
+`logs/<run_id>.log` y un resumen JSON con el estado y las métricas de cada etapa.
+
+Decisión. `make health` lee los resúmenes de `logs/` y evalúa siete controles:
+
+| Control | ALERT | WARN |
+| :--- | :--- | :--- |
+| última corrida | alguna etapa falló | |
+| frescura de Gold | | más de 26 horas sin construir Gold (O1 es D+1) |
+| watermark del stream | descartó alguna fila (D8 espera 0) | |
+| O3 | más del 1% de los eventos o del costo en Quarantine | |
+| conciliación de Gold y de los marts | algún mart no pasó | |
+| serving | las filas escritas no coinciden con Gold | |
+| Quarantine | | creció respecto de la corrida anterior |
+
+Sale con código 1 si hay alguna ALERT, que es lo que un scheduler usa para avisar: en producción,
+cron o Airflow corren `make run` y después `make health`. El reporte incluye la historia de las
+últimas 10 corridas, con eventos, filas en Quarantine, filas de Gold, destino de serving y tiempo.
+
+Alternativas. Prometheus y Grafana darían tableros y alertas por canal, pero suman dos servicios a
+un pipeline que corre una vez por día y que ya escribe sus métricas en JSON. Un control dentro de
+cada etapa ya existe para cortar la corrida (la conciliación de Gold, por ejemplo); lo que faltaba
+era mirar todas las corridas juntas, la frescura y las tendencias.
+
+Consecuencias. Las alertas dependen de que alguien corra `make health` o de que lo haga el
+scheduler; no hay un proceso que vigile solo. Los umbrales están en el código (`pipeline/health.py`).
