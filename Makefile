@@ -80,6 +80,9 @@ cqlsh:            ## interactive cqlsh in the container, as the read-only role
 reset-serving:    ## drop the Cassandra keyspace; the next make serve recreates it empty
 	$(call CQLSH_AS,CASSANDRA_ADMIN) -e "DROP KEYSPACE IF EXISTS cloud_analytics;"
 
+health:           ## OK, WARN or ALERT for the last runs (exit 1 on ALERT), from the summaries in logs/
+	$(PY) -m pipeline.health
+
 evidence:         ## row counts of the lake and of Cassandra, in evidence/entrega-2/counts_latest.json
 	$(PY) -m pipeline.evidence latest
 
