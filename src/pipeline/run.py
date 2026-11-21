@@ -10,7 +10,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from . import anomalies, bronze_batch, bronze_stream, gold, serving, silver
+from . import anomalies, bronze_batch, bronze_stream, gold, marts, serving, silver
 from .config import Config
 from .errors import PipelineError
 from .spark import build_session, check_java
@@ -51,6 +51,7 @@ STAGES = {
     "silver": silver.run,
     "gold": gold.run,
     "anomalies": anomalies.run,
+    "marts": marts.run,
     "serving": serving.run,
 }
 DEFAULT_ORDER = list(STAGES)

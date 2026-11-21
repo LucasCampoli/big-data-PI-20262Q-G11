@@ -41,13 +41,13 @@ reset-stream:     ## new checkpoints: drop both streaming queries' state and out
 silver:           ## rebuild Silver and the rule Quarantine from Bronze
 	$(RUN) silver
 
-gold:             ## daily FinOps mart (reconciled against Silver) and the anomaly mart
-	$(RUN) gold anomalies
+gold:             ## daily FinOps mart (reconciled against Silver), the anomaly mart and the Q2-Q5 marts
+	$(RUN) gold anomalies marts
 
 fixtures:         ## the pipeline over the synthetic fixtures (tests/fixtures/landing) in a separate lake
 	rm -rf datalake/_fixtures logs/fixtures
 	DATA_LANDING=tests/fixtures/landing DATALAKE_ROOT=datalake/_fixtures LOG_DIR=logs/fixtures \
-	SERVING_TARGET=none $(RUN) bronze-batch bronze-stream silver gold anomalies
+	SERVING_TARGET=none $(RUN) bronze-batch bronze-stream silver gold anomalies marts
 
 COMPOSE := docker compose -f infra/docker-compose.yml
 CQLSH := $(COMPOSE) exec -T cassandra cqlsh --request-timeout=120
