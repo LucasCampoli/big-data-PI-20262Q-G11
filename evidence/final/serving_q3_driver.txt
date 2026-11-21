@@ -1,0 +1,17 @@
+Q3. Critical tickets and SLA breach rate per day, last 30 days, one organization
+target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-21T19:14:34+00:00
+
+SELECT ticket_date, tickets, critical_tickets, sla_breached_tickets, sla_breach_rate, csat_avg
+FROM cloud_analytics.tickets_daily_by_org
+WHERE org_id = 'org_kdgigatj'
+  AND ticket_date >= '2025-08-02' AND ticket_date <= '2025-08-31';
+
+ticket_date | tickets | critical_tickets | sla_breached_tickets | sla_breach_rate | csat_avg
+2025-08-20 | 1 | 0 | 1 | 1.0000 | 4.0000
+2025-08-19 | 1 | 0 | 0 | 0.0000 | 
+2025-08-09 | 1 | 1 | 0 | 0.0000 | 
+2025-08-08 | 1 | 0 | 0 | 0.0000 | 
+2025-08-04 | 1 | 0 | 0 | 0.0000 | 5.0000
+2025-08-02 | 1 | 0 | 0 | 0.0000 | 
+
+(6 rows)

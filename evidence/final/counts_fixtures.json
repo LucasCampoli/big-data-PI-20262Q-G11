@@ -1,0 +1,36 @@
+{
+  "label": "fixtures",
+  "taken_utc": "2026-11-21T19:14:46+00:00",
+  "lake_rows": {
+    "bronze/billing_monthly": 2,
+    "bronze/customers_orgs": 2,
+    "bronze/marketing_touches": 2,
+    "bronze/nps_surveys": 2,
+    "bronze/resources": 3,
+    "bronze/support_tickets": 3,
+    "bronze/usage_events": 13,
+    "bronze/users": 2,
+    "silver/billing_monthly": 2,
+    "silver/customers_orgs": 2,
+    "silver/marketing_touches": 2,
+    "silver/nps_surveys": 2,
+    "silver/resources": 3,
+    "silver/support_tickets": 2,
+    "silver/usage_events": 5,
+    "silver/users": 2,
+    "gold/cost_anomaly_mart": 2,
+    "gold/genai_tokens_by_org_date": 1,
+    "gold/org_daily_usage_by_service": 2,
+    "gold/revenue_by_org_month": 2,
+    "gold/tickets_by_org_date": 2,
+    "gold/tickets_daily_by_org": 2,
+    "gold/top_services_14d_by_org": 2,
+    "quarantine/masters_parse": 1,
+    "quarantine/masters_rules": 1,
+    "quarantine/usage_events_parse": 2,
+    "quarantine/usage_events_rules": 8
+  },
+  "cassandra_rows": {
+    "status": "skipped"
+  }
+}

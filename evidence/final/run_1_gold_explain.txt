@@ -1,0 +1,37 @@
+== Physical Plan ==
+AdaptiveSparkPlan (5)
++- HashAggregate (4)
+   +- Exchange (3)
+      +- HashAggregate (2)
+         +- Scan parquet  (1)
+
+
+(1) Scan parquet 
+Output [11]: [org_id#13732, service#13734, cost_usd_increment#13739, requests#13741, cpu_hours#13742, storage_gb_hours#13743, genai_tokens#13744L, carbon_kg#13745, unit_imputed#13750, cost_anomaly_flag#13751, event_date#13757]
+Batched: true
+Location: InMemoryFileIndex [file:<repo>/datalake/silver/usage_events]
+ReadSchema: struct<org_id:string,service:string,cost_usd_increment:double,requests:double,cpu_hours:double,storage_gb_hours:double,genai_tokens:bigint,carbon_kg:double,unit_imputed:boolean,cost_anomaly_flag:boolean>
+
+(2) HashAggregate
+Input [11]: [org_id#13732, service#13734, cost_usd_increment#13739, requests#13741, cpu_hours#13742, storage_gb_hours#13743, genai_tokens#13744L, carbon_kg#13745, unit_imputed#13750, cost_anomaly_flag#13751, event_date#13757]
+Keys [3]: [org_id#13732, event_date#13757, service#13734]
+Functions [9]: [partial_sum(cost_usd_increment#13739), partial_sum(requests#13741), partial_sum(cpu_hours#13742), partial_sum(storage_gb_hours#13743), partial_sum(genai_tokens#13744L), partial_sum(carbon_kg#13745), partial_count(1), partial_sum(cast(cost_anomaly_flag#13751 as int)), partial_sum(cast(unit_imputed#13750 as int))]
+Aggregate Attributes [9]: [sum#13808, sum#13809, sum#13810, sum#13811, sum#13812L, sum#13813, count#13814L, sum#13815L, sum#13816L]
+Results [12]: [org_id#13732, event_date#13757, service#13734, sum#13817, sum#13818, sum#13819, sum#13820, sum#13821L, sum#13822, count#13823L, sum#13824L, sum#13825L]
+
+(3) Exchange
+Input [12]: [org_id#13732, event_date#13757, service#13734, sum#13817, sum#13818, sum#13819, sum#13820, sum#13821L, sum#13822, count#13823L, sum#13824L, sum#13825L]
+Arguments: hashpartitioning(org_id#13732, event_date#13757, service#13734, 8), ENSURE_REQUIREMENTS, [plan_id=5548]
+
+(4) HashAggregate
+Input [12]: [org_id#13732, event_date#13757, service#13734, sum#13817, sum#13818, sum#13819, sum#13820, sum#13821L, sum#13822, count#13823L, sum#13824L, sum#13825L]
+Keys [3]: [org_id#13732, event_date#13757, service#13734]
+Functions [9]: [sum(cost_usd_increment#13739), sum(requests#13741), sum(cpu_hours#13742), sum(storage_gb_hours#13743), sum(genai_tokens#13744L), sum(carbon_kg#13745), count(1), sum(cast(cost_anomaly_flag#13751 as int)), sum(cast(unit_imputed#13750 as int))]
+Aggregate Attributes [9]: [sum(cost_usd_increment#13739)#13797, sum(requests#13741)#13798, sum(cpu_hours#13742)#13799, sum(storage_gb_hours#13743)#13800, sum(genai_tokens#13744L)#13801L, sum(carbon_kg#13745)#13802, count(1)#13796L, sum(cast(cost_anomaly_flag#13751 as int))#13803L, sum(cast(unit_imputed#13750 as int))#13804L]
+Results [14]: [org_id#13732, event_date#13757 AS usage_date#13758, service#13734, round(sum(cost_usd_increment#13739)#13797, 4) AS daily_cost_usd#13759, sum(requests#13741)#13798 AS requests#13760, sum(cpu_hours#13742)#13799 AS cpu_hours#13761, sum(storage_gb_hours#13743)#13800 AS storage_gb_hours#13762, sum(genai_tokens#13744L)#13801L AS genai_tokens#13763L, sum(carbon_kg#13745)#13802 AS carbon_kg#13764, count(1)#13796L AS events#13765L, sum(cast(cost_anomaly_flag#13751 as int))#13803L AS negative_cost_events#13766L, sum(cast(unit_imputed#13750 as int))#13804L AS unit_imputed_events#13767L, 2026-11-21 19:12:01 AS computed_ts#13806, 20261121T191156Z AS run_id#13807]
+
+(5) AdaptiveSparkPlan
+Output [14]: [org_id#13732, usage_date#13758, service#13734, daily_cost_usd#13759, requests#13760, cpu_hours#13761, storage_gb_hours#13762, genai_tokens#13763L, carbon_kg#13764, events#13765L, negative_cost_events#13766L, unit_imputed_events#13767L, computed_ts#13806, run_id#13807]
+Arguments: isFinalPlan=false
+
+

@@ -1,0 +1,39 @@
+{
+  "label": "astra_load_2",
+  "taken_utc": "2026-11-21T19:26:09+00:00",
+  "lake_rows": {
+    "bronze/billing_monthly": 240,
+    "bronze/customers_orgs": 80,
+    "bronze/marketing_touches": 1500,
+    "bronze/nps_surveys": 92,
+    "bronze/resources": 400,
+    "bronze/support_tickets": 1000,
+    "bronze/usage_events": 43200,
+    "bronze/users": 800,
+    "silver/billing_monthly": 240,
+    "silver/customers_orgs": 80,
+    "silver/marketing_touches": 1500,
+    "silver/nps_surveys": 92,
+    "silver/resources": 400,
+    "silver/support_tickets": 1000,
+    "silver/usage_events": 43200,
+    "silver/users": 800,
+    "gold/cost_anomaly_mart": 11050,
+    "gold/genai_tokens_by_org_date": 1131,
+    "gold/org_daily_usage_by_service": 11050,
+    "gold/revenue_by_org_month": 240,
+    "gold/tickets_by_org_date": 984,
+    "gold/tickets_daily_by_org": 944,
+    "gold/top_services_14d_by_org": 15599
+  },
+  "cassandra_rows": {
+    "status": "ok",
+    "target": "astra",
+    "org_daily_usage_by_service": 11050,
+    "cost_anomalies_by_org": 11050,
+    "top_services_14d_by_org": 15599,
+    "tickets_daily_by_org": 944,
+    "revenue_by_org_month": 240,
+    "genai_tokens_by_org_date": 1131
+  }
+}

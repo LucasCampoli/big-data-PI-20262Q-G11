@@ -33,3 +33,24 @@ lake vacío, con los datos reales.
 
 En los archivos copiados de los logs, la ruta local del repo aparece como `<repo>`, y el token, el
 host de AstraDB y la ruta del bundle quedan enmascarados.
+
+## Final, `final/`
+
+Salida de `make rerun-evidence` del 2026-11-21 contra la Cassandra local con login, más dos cargas a
+AstraDB. Todo se regenera con los comandos de la tabla.
+
+| Archivo | Contenido | Cómo se obtiene |
+| :--- | :--- | :--- |
+| `counts_run_1.json`, `counts_run_2.json` | filas de las 23 tablas del lake y de las 6 de Cassandra después de cada corrida | `make rerun-evidence` |
+| `run_1_<run_id>.log`, `run_2_<run_id>.log` | log de la primera corrida y de la re-ejecución | `python -m pipeline.evidence LABEL`, copia de `logs/<run_id>.log` |
+| `run_1_gold_explain.txt`, `run_2_gold_explain.txt` | plan físico de la agregación de Gold (`df.explain()`) | copia de `logs/<run_id>_gold_explain.txt` |
+| `counts_fixtures.json`, `fixtures_<run_id>.log`, `fixtures_gold_explain.txt` | el pipeline sobre los fixtures: una fila en Quarantine por regla | `make fixtures` y el conteo de ese lake |
+| `serving_q1_cqlsh.txt` a `serving_q6_cqlsh.txt` | Q1 a Q6 por cqlsh, con el rol de solo lectura | `make queries` |
+| `serving_q1_driver.txt` a `serving_q6_driver.txt` | las mismas consultas por el driver de Python | `make queries` |
+| `health_report.md` | los controles de `make health` y la historia de corridas | `make rerun-evidence` |
+| `counts_astra_load_1.json`, `counts_astra_load_2.json`, `astra_load_*.log` | filas de las 6 tablas en AstraDB después de cada carga, y su log | `make serve` y `python -m pipeline.evidence astra_load_N` con `SERVING_TARGET=astra` |
+| `serving_q*_driver_astra.txt` | Q1 a Q6 por el driver contra AstraDB | `make queries` con `SERVING_TARGET=astra` |
+
+El diccionario de datos de esa corrida está en `docs/data_dictionary.md` (`make dictionary`). En
+los logs copiados, la ruta local del repo aparece como `<repo>` y el host de AstraDB como
+`<astra-host>`.

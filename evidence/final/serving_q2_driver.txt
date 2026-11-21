@@ -1,0 +1,14 @@
+Q2. Top 3 services by cost over the last 14 days, one organization
+target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-21T19:14:34+00:00
+
+SELECT rank, service, cost_14d_usd, days_with_usage, window_start
+FROM cloud_analytics.top_services_14d_by_org
+WHERE org_id = 'org_okep7y6w' AND as_of_date = '2025-08-31'
+LIMIT 3;
+
+rank | service | cost_14d_usd | days_with_usage | window_start
+1 | genai | 211.0267 | 10 | 2025-08-18
+2 | storage | 117.8743 | 13 | 2025-08-18
+3 | database | 90.8801 | 9 | 2025-08-18
+
+(3 rows)

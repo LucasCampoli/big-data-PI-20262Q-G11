@@ -1,0 +1,9 @@
+$ cqlsh -f cql/q2_top_services_14d.cql
+
+ rank | service  | cost_14d_usd | days_with_usage | window_start
+------+----------+--------------+-----------------+--------------
+    1 |    genai |     211.0267 |              10 |   2025-08-18
+    2 |  storage |     117.8743 |              13 |   2025-08-18
+    3 | database |      90.8801 |               9 |   2025-08-18
+
+(3 rows)

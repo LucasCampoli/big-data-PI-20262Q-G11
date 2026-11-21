@@ -1,0 +1,13 @@
+Q4. Monthly revenue in USD after credits and taxes, one organization
+target: cassandra  keyspace: cloud_analytics  consistency: LOCAL_QUORUM  run at: 2026-11-21T19:14:34+00:00
+
+SELECT month, invoices, subtotal_usd, credits_usd, taxes_usd, revenue_usd, currency, exchange_rate_applied
+FROM cloud_analytics.revenue_by_org_month
+WHERE org_id = 'org_okep7y6w';
+
+month | invoices | subtotal_usd | credits_usd | taxes_usd | revenue_usd | currency | exchange_rate_applied
+2025-08-01 | 1 | 972.3600 | 5.3100 | 204.2000 | 1171.2500 | USD | 1.0000
+2025-07-01 | 1 | 857.3100 | 3.3800 | 180.0400 | 1033.9700 | USD | 1.0000
+2025-06-01 | 1 | 1205.2500 | 12.8600 | 253.1000 | 1445.4900 | USD | 1.0000
+
+(3 rows)
