@@ -3,15 +3,17 @@
 Cloud Provider Analytics: ingestar y conformar datos de clientes para FinOps, Soporte y Producto.
 
 Pipeline PySpark de Landing a Bronze, Silver y Gold en Parquet, con ingesta batch y Structured
-Streaming, reglas de calidad con Quarantine, un mart FinOps diario, un mart de anomalías de costo y
-serving en Cassandra.
+Streaming, reglas de calidad con Quarantine, marts de FinOps, Soporte y Producto, un mart de
+anomalías de costo y serving en Cassandra y AstraDB para las seis consultas.
 
 | Documento | Qué tiene |
 | :--- | :--- |
-| [docs/entrega-2.md](docs/entrega-2.md) | entrega 2: qué se implementó, arquitectura v2, evidencia y backlog. Se entrega como `docs/entrega-2.pdf` |
+| [docs/final.md](docs/final.md) | MVP final: arquitectura, procesamiento, serving, calidad, gobierno, limitaciones y requisito → evidencia. Se entrega como `docs/final.pdf` |
+| [docs/entrega-2.md](docs/entrega-2.md) | entrega 2: qué se implementó, arquitectura v2, evidencia y backlog (`docs/entrega-2.pdf`) |
 | [docs/design.md](docs/design.md), [docs/appendix.md](docs/appendix.md) | diseño de la entrega 1, que es el contrato de la implementación (`docs/entrega-1.pdf`) |
-| [DECISIONS.md](DECISIONS.md) | las 17 decisiones, con alternativas y consecuencias |
+| [DECISIONS.md](DECISIONS.md) | las 20 decisiones, con alternativas y consecuencias |
 | [docs/governance.md](docs/governance.md), [docs/execution_sheet.md](docs/execution_sheet.md) | matriz de gobierno y ficha de ejecución |
+| [docs/data_dictionary.md](docs/data_dictionary.md) | diccionario de datos de todas las tablas del lake, generado desde los Parquet |
 | [evidence/](evidence/README.md) | perfiles de Landing, logs de corrida, conteos, muestras de Quarantine y salidas de las consultas |
 
 ## Quickstart
@@ -43,7 +45,8 @@ make setup        # crea .venv, instala requirements.txt y crea config/pipeline.
 ```
 
 `make setup` copia `config/pipeline.env.example` a `config/pipeline.env` y genera ahí una sal
-aleatoria para el hash de emails. Ese archivo no se commitea. Revisar `PIPELINE_JAVA_HOME`: por
+aleatoria para el hash de emails y las contraseñas de los roles de Cassandra. Si el archivo ya
+existe, solo completa las claves que falten. Ese archivo no se commitea. Revisar `PIPELINE_JAVA_HOME`: por
 defecto apunta a `/usr/lib/jvm/java-21-openjdk-amd64` (paquete `openjdk-21-jdk` de Ubuntu).
 
 ### 2. Conseguir el dataset
@@ -73,26 +76,32 @@ y se usa con `DATA_LANDING=data/sample make run`.
 
 ```bash
 make check          # Java, Spark y Landing; falla con un mensaje si algo falta
-make cassandra-up   # Cassandra 5.0 en Docker; espera a que responda CQL (1 a 2 minutos)
-make run            # el pipeline completo: Bronze, Silver, Gold, anomalías y carga a Cassandra
-make queries        # Q1, Q2 y Q6 por el driver y por cqlsh, salidas en evidence/entrega-2/
+make cassandra-up   # Cassandra 5.0 en Docker, con login; espera a que acepte conexiones (1 a 2 minutos)
+make cassandra-init # como superusuario: keyspace, tablas y los roles cpa_loader y cpa_reader
+make run            # el pipeline completo: Bronze, Silver, Gold, anomalías, marts y carga a Cassandra
+make queries        # Q1 a Q6 por el driver y por cqlsh, salidas en evidence/final/
+make health         # OK, WARN o ALERT sobre las últimas corridas; sale con 1 si hay una ALERT
 ```
 
 Una corrida completa tarda alrededor de un minuto. Cada corrida deja `logs/<run_id>.log` y
-`logs/<run_id>.json` con la configuración, el commit y las métricas de cada etapa.
+`logs/<run_id>.json` con la configuración y las métricas de cada etapa, que es lo que lee
+`make health`. `make dictionary` regenera `docs/data_dictionary.md` desde el lake.
 
 Las etapas también se corren por separado, en este orden: `make bronze`, `make stream`,
-`make silver`, `make gold`, `make serve`. `make cqlsh` abre una consola CQL en el contenedor.
+`make silver`, `make gold` (mart diario, anomalías y marts de Q2 a Q5), `make serve`. `make cqlsh`
+abre una consola CQL en el contenedor con el rol de solo lectura.
 
 ### 4. Probar
 
 ```bash
 make test           # pruebas con Spark local, no necesitan Cassandra
 make fixtures       # el pipeline sobre tests/fixtures/landing, con un lake aparte: ejercita cada regla de Quarantine
-make rerun-evidence # desde cero: el pipeline dos veces seguidas y un conteo de filas después de cada una
+make rerun-evidence # desde cero: el pipeline dos veces, conteos, fixtures, Q1 a Q6, health y diccionario
 ```
 
-`make rerun-evidence` borra el lake y el keyspace de Cassandra antes de empezar.
+`make rerun-evidence` borra el lake y el keyspace de Cassandra antes de empezar, y deja todo en
+`evidence/final/`. `make test` incluye una prueba que falla si algún archivo del repo tiene un
+secreto.
 
 ### 5. Limpiar y reiniciar
 
@@ -100,14 +109,18 @@ make rerun-evidence # desde cero: el pipeline dos veces seguidas y un conteo de 
 | :--- | :--- |
 | `make reset` | `datalake/` entero: Bronze, Silver, Gold, Quarantine, checkpoints y registro de ingestados. Landing nunca se toca |
 | `make reset-stream` | solo los dos checkpoints del streaming y sus salidas, para reprocesar los eventos desde Landing |
-| `make reset-serving` | el keyspace de Cassandra; `make serve` lo vuelve a crear |
+| `make reset-serving` | el keyspace de Cassandra; `make cassandra-init` lo vuelve a crear |
 | `make cassandra-down` | detiene el contenedor y conserva el volumen de datos |
 
 El contenedor (`cpa-cassandra`) y el volumen (`cloud-provider-analytics_cassandra-data`) tienen nombre
 fijo en `infra/docker-compose.yml`. Un clon nuevo en la misma máquina usa el mismo contenedor y
 encuentra el keyspace `cloud_analytics` con lo que cargó la corrida anterior. La carga es un upsert,
 así que una corrida nueva deja las mismas filas, pero para arrancar con el keyspace vacío hay que
-correr `make reset-serving`.
+correr `make reset-serving cassandra-init`. Como el contenedor tiene login, un clon nuevo en la misma
+máquina necesita las contraseñas con las que se inicializó: copiar el `config/pipeline.env` del
+clon anterior antes de `make setup`, o empezar con un volumen nuevo (`make cassandra-down`,
+`docker volume rm cloud-provider-analytics_cassandra-data`, `make cassandra-up cassandra-init`). Un contenedor creado antes de activar el login se
+recrea con la configuración nueva al correr `make cassandra-up`; los datos del volumen se conservan.
 
 ### Streaming continuo
 
@@ -120,8 +133,8 @@ STREAM_TRIGGER=processing_time make stream    # Ctrl+C lo detiene; el checkpoint
 
 ### AstraDB
 
-El mismo código carga y consulta AstraDB cambiando solo la conexión. Lo probamos con el keyspace
-`cpa` (evidencia en `evidence/entrega-2/astra_load_1.log` y `serving_q*_driver_astra.txt`):
+Es el destino de la demo. El mismo código carga y consulta AstraDB cambiando solo la conexión. Lo
+probamos con el keyspace `cpa` (evidencia en `evidence/final/`, archivos `*astra*`):
 
 1. Crear una cuenta en astra.datastax.com y una base Serverless en el free tier.
 2. Desde la consola de la base, en Keyspaces, crear el keyspace del proyecto. AstraDB no acepta
@@ -138,8 +151,8 @@ export ASTRA_SECURE_CONNECT_BUNDLE=$HOME/secrets/secure-connect-cpa.zip
 export ASTRA_TOKEN='<token de la consola>'
 export CASSANDRA_KEYSPACE=cpa                   # el keyspace creado en la consola
 PYTHONPATH=src .venv/bin/python -m pipeline.queries --keyspaces   # lista los keyspaces de la base
-make serve                                      # crea las tablas de cql/01_tables.cql y carga los dos marts
-PYTHONPATH=src .venv/bin/python -m pipeline.queries   # deja evidence/entrega-2/serving_q*_driver_astra.txt
+make serve                                      # crea las tablas que falten de cql/01_tables.cql y carga las seis
+PYTHONPATH=src .venv/bin/python -m pipeline.queries   # deja evidence/final/serving_q*_driver_astra.txt
 ```
 
 El free tier hiberna la base después de 48 horas sin uso: antes de una demo hay que abrirla en la
@@ -153,6 +166,9 @@ consola para que se reanude.
 | `PII_HASH_SALT is not set` | falta la sal del hash de emails: `make setup` la genera, o se define en `config/pipeline.env` |
 | `Landing at ... is incomplete` | faltan archivos en `data/landing/`, ver el paso 2 |
 | `cannot reach cassandra` | el contenedor no está arriba: `make cassandra-up` |
+| `AuthenticationFailed` o `Unauthorized` en Cassandra local | faltan los roles o cambiaron las contraseñas: `make setup` y `make cassandra-init`; si el contenedor lo inicializó otro clon, ver el paso 5 |
+| `HTTP Error 401` al conectar a AstraDB | la base está hibernada o el bundle ya no vale: reanudarla en la consola y, si sigue, descargar el bundle de nuevo |
+| `the loader role needs ...` | `config/pipeline.env` es anterior al login: `make setup` completa las claves que faltan |
 | `make cassandra-up` tarda o el contenedor queda `unhealthy` | después de un apagado brusco Cassandra compacta varios minutos; esperar, o `make cassandra-down cassandra-up` |
 | `OperationTimedOut` en cqlsh | el nodo está ocupado; los targets ya usan `--request-timeout=120`, reintentar |
 | el stream falla al arrancar después de cambiar su código | el checkpoint ya no es compatible: `make reset-stream` (D14) |
@@ -163,16 +179,16 @@ consola para que se reanude.
 
 ```text
 Makefile         los comandos
-src/pipeline/    código: config, sesión de Spark, esquemas, Bronze, Silver, Gold, anomalías, serving, evidencia
+src/pipeline/    código: config, sesión de Spark, esquemas, Bronze, Silver, Gold, anomalías, marts, serving, health, evidencia
 tests/           pruebas y la Landing de fixtures (tests/fixtures/landing)
 cql/             keyspace, tablas y consultas de Cassandra
 infra/           docker-compose de Cassandra
 config/          pipeline.env.example, sin secretos
 data/            muestra commiteada en data/sample/; los archivos crudos van en data/landing/
 docs/            entregas, diseño, gobierno, ficha de ejecución, diagramas y la consigna
-evidence/        perfiles de Landing (entrega 1) y evidencia de corrida (entrega-2/)
+evidence/        perfiles de Landing (entrega 1) y evidencia de corrida (entrega-2/ y final/)
 notebooks/       exploración de Landing con PySpark (entrega 1)
-scripts/         la muestra de datos y la corrida del notebook
+scripts/         config/pipeline.env inicial, la muestra de datos, la corrida del notebook y el armado del PDF
 datalake/, logs/ salidas de las corridas, fuera de git
 ```
 
