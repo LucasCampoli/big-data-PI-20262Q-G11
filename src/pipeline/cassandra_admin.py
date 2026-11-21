@@ -61,7 +61,9 @@ def main(argv=None) -> int:
     parser.add_argument("--drop", action="store_true", help="drop the keyspace and its grants, nothing else")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("cassandra").setLevel(logging.ERROR)
+    # The first login of a fresh volume fails on purpose (stock password); the driver would log it
+    # as an error with a traceback.
+    logging.getLogger("cassandra").setLevel(logging.CRITICAL)
     cfg = Config.from_env()
     try:
         if cfg.serving_target != "cassandra":
@@ -84,8 +86,12 @@ def main(argv=None) -> int:
             for stmt in cql_statements(CQL_DIR / name, ks):
                 session.execute(stmt)
         for user, password, permissions in wanted.values():
-            session.execute(f"CREATE ROLE IF NOT EXISTS {user} WITH PASSWORD = '{password}' AND LOGIN = true")
-            session.execute(f"ALTER ROLE {user} WITH PASSWORD = '{password}'")
+            # Cassandra 5 refuses a second password change within 5 s, so a new role is created with
+            # its password and an existing one is altered, never both.
+            if session.execute("SELECT role FROM system_auth.roles WHERE role = %s", [user]).one():
+                session.execute(f"ALTER ROLE {user} WITH PASSWORD = '{password}' AND LOGIN = true")
+            else:
+                session.execute(f"CREATE ROLE {user} WITH PASSWORD = '{password}' AND LOGIN = true")
             for permission in permissions:
                 session.execute(f"GRANT {permission} ON KEYSPACE {ks} TO {user}")
             granted = sorted({r.permission for r in session.execute(f"LIST ALL PERMISSIONS OF {user}")})
