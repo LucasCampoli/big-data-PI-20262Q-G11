@@ -62,12 +62,13 @@ cassandra-down:   ## stop it (the data volume is kept; add -v by hand to drop it
 serve:            ## create keyspace and tables if missing, upsert the Gold marts, check the row count
 	$(RUN) serving
 
-queries:          ## Q1, Q2 and Q6 through the driver and through cqlsh, saved to evidence/entrega-2
+queries:          ## Q1 to Q6 through the driver and, on local Cassandra, through cqlsh; saved to the evidence dir
 	$(PY) -m pipeline.queries
 	@mkdir -p $(EVIDENCE)
-	for q in q1_daily_cost_by_service q2_top_services_14d q6_cost_anomalies; do \
-	  { echo "$$ cqlsh -f cql/$$q.cql"; $(CQLSH) -f /cql/$$q.cql; } > $(EVIDENCE)/serving_$${q%%_*}_cqlsh.txt; \
-	  cat $(EVIDENCE)/serving_$${q%%_*}_cqlsh.txt; done
+	if [ "$${SERVING_TARGET:-cassandra}" = cassandra ]; then \
+	  for f in cql/q*.cql; do q=$$(basename $$f .cql); \
+	    { echo "$$ cqlsh -f $$f"; $(CQLSH) -f /$$f; } > $(EVIDENCE)/serving_$${q%%_*}_cqlsh.txt; \
+	    cat $(EVIDENCE)/serving_$${q%%_*}_cqlsh.txt; done; fi
 
 cqlsh:            ## interactive cqlsh in the container
 	$(COMPOSE) exec cassandra cqlsh

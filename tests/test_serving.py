@@ -35,3 +35,15 @@ def test_astra_without_credentials_is_a_clear_error():
 def test_unknown_target_is_rejected():
     with pytest.raises(PipelineError, match="SERVING_TARGET"):
         connection_settings(dataclasses.replace(Config.from_env(), serving_target="mongo"))
+
+
+def test_every_served_table_has_its_query():
+    queries = " ".join(p.read_text() for p in CQL_DIR.glob("q*.cql"))
+    for table, _ in TABLES.values():
+        assert f"cloud_analytics.{table}" in queries, table
+
+
+def test_top_n_is_read_with_limit_from_the_precomputed_table():
+    stmt = cql_statements(CQL_DIR / "q2_top_services_14d.cql", "ks")[0]
+    assert "ks.top_services_14d_by_org" in stmt and "LIMIT 3" in stmt
+    assert "as_of_date = " in stmt

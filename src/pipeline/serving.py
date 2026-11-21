@@ -33,6 +33,20 @@ TABLES = {
         "org_id", "usage_date", "service", "daily_cost_usd", "median_cost", "mad_cost",
         "history_days", "score_method", "anomaly_score", "is_anomaly", "anomaly_direction",
         "computed_ts", "run_id"]),
+    "top_services_14d_by_org": ("top_services_14d_by_org", [
+        "org_id", "as_of_date", "rank", "service", "cost_14d_usd", "days_with_usage", "events",
+        "window_start", "window_complete", "computed_ts", "run_id"]),
+    "tickets_daily_by_org": ("tickets_daily_by_org", [
+        "org_id", "ticket_date", "tickets", "critical_tickets", "sla_breached_tickets",
+        "critical_sla_breached", "sla_known_tickets", "sla_breach_rate", "open_tickets",
+        "csat_responses", "csat_avg", "computed_ts", "run_id"]),
+    "revenue_by_org_month": ("revenue_by_org_month", [
+        "org_id", "month", "invoices", "subtotal_usd", "credits_usd", "taxes_usd", "revenue_usd",
+        "currency", "exchange_rate_applied", "fx_overridden_invoices", "credits_imputed_invoices",
+        "negative_subtotal_invoices", "computed_ts", "run_id"]),
+    "genai_tokens_by_org_date": ("genai_tokens_by_org_date", [
+        "org_id", "usage_date", "genai_tokens", "genai_cost_usd", "token_cost_usd",
+        "usd_per_1k_tokens", "events", "events_with_tokens", "computed_ts", "run_id"]),
 }
 LOAD_PARTITIONS = 4
 CONCURRENCY = 32
@@ -137,7 +151,7 @@ def run(ctx, metrics):
         for gold_table, (table, columns) in TABLES.items():
             path = cfg.table("gold", gold_table)
             if not lake.exists(path):
-                raise PipelineError(f"Gold {gold_table} is empty: run gold and anomalies first")
+                raise PipelineError(f"Gold {gold_table} is empty: run gold, anomalies and marts first")
             gold = lake.read(ctx.spark, path)
             written = load(ctx, gold, table, columns, settings)
             expected = gold.count()
